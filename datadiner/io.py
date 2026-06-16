@@ -8,7 +8,7 @@ lives in one place.
 import pandas as pd
 
 
-def load_events(path, date_col="date", user_col="user_id"):
+def load_events(path, date_col="date", user_col="user_id", dtype=None):
     """Load an event-log CSV with parsed dates, validating the core columns.
 
     Parameters
@@ -17,16 +17,20 @@ def load_events(path, date_col="date", user_col="user_id"):
         Path to the CSV.
     date_col, user_col : str
         Source column names; renamed to the canonical `date` / `user_id`.
+    dtype : dict, optional
+        Column dtype hints passed to `pd.read_csv` — use to honor a dataset
+        brief's `schema.dtypes` (e.g. `{'app_version': str}`).
 
     Returns
     -------
-    DataFrame with `date` (datetime64) and `user_id`.
+    DataFrame with `date` (datetime64), `user_id`, and any other columns in the
+    CSV preserved (event_type, segment dimensions, ...) so `segment_by=` works.
 
     Raises
     ------
     ValueError if a required column is missing.
     """
-    df = pd.read_csv(path)
+    df = pd.read_csv(path, dtype=dtype)
     missing = {date_col, user_col} - set(df.columns)
     if missing:
         raise ValueError(

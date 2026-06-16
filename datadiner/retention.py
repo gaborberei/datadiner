@@ -23,6 +23,23 @@ import matplotlib.pyplot as plt
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+def _segment_values(df, segment_by):
+    """Yield (label, sub_df) pairs to run a view over.
+
+    With segment_by=None this is a single (None, df) pass — the un-segmented
+    behaviour. Otherwise it returns one (value, df[df[col]==value]) pair per
+    distinct, non-null value of the segment column, sorted for stable output.
+    """
+    if segment_by is None:
+        return [(None, df)]
+    if segment_by not in df.columns:
+        raise ValueError(
+            f"segment_by={segment_by!r} not in columns {list(df.columns)}; "
+            f"pass a column declared in the dataset brief's analysis.segment_cols"
+        )
+    return [(v, df[df[segment_by] == v]) for v in sorted(df[segment_by].dropna().unique())]
+
+
 def _prepare_cohorts(df, granularity='weekly'):
     """Assign cohorts and compute active users per cohort per period."""
     df = df.copy()
@@ -174,11 +191,66 @@ def _plot_heatmap(pivot, title, annotation_fmt, figsize, save=None):
     return fig, ax
 
 
+def _seg_save(save, value):
+    """Insert the segment value into a save filename so panels don't collide."""
+    if not save or value is None:
+        return save
+    from pathlib import Path
+    p = Path(save)
+    return str(p.with_name(f"{p.stem}_{value}{p.suffix}"))
+
+
+def _cohort_heatmap(df, granularity, segment_by, save, transform, title_fn, annotation_fmt):
+    """Shared driver for the five cohort heatmaps.
+
+    `transform(cohort_data, sizes, pcol, maxp, fmt) -> pivot` builds the view's
+    pivot; `title_fn(granularity) -> str` builds its title. With segment_by set,
+    renders one heatmap per segment value and returns a list of
+    (value, fig, ax); otherwise returns a single (fig, ax).
+    """
+    results = []
+    for value, sub in _segment_values(df, segment_by):
+        cohort_data, sizes, pcol, maxp, fmt = _prepare_cohorts(sub, granularity)
+        pivot = transform(cohort_data, sizes, pcol, maxp, fmt)
+
+        period_label = 'Weeks' if granularity in ('week', 'weekly') else 'Months'
+        figsize = (20, 12) if granularity in ('week', 'weekly') else (16, 8)
+        suffix = '' if value is None else f' — {segment_by}={value}'
+
+        fig, ax = _plot_heatmap(
+            pivot, title_fn(granularity) + suffix, annotation_fmt,
+            figsize, _seg_save(save, value),
+        )
+        ax.set_xlabel(f'{period_label} Since Signup')
+        ax.set_ylabel(f'Cohort {period_label[:-1]}')
+
+        if value is None:
+            return fig, ax
+        results.append((value, fig, ax))
+    return results
+
+
+def _period_label(granularity):
+    return 'Weeks' if granularity in ('week', 'weekly') else 'Months'
+
+
+def _period_prefix(granularity):
+    return '' if granularity in ('week', 'weekly') else 'Monthly '
+
+
+def _diff_pivot(pivot):
+    """Period-over-period diff of a pivot, preserving the grey Users column."""
+    users_col = pivot['Users']
+    diff = pivot.drop(columns='Users').diff(axis=1).iloc[:, 1:]
+    diff.insert(0, 'Users', users_col)
+    return diff
+
+
 # ---------------------------------------------------------------------------
 # Public API — Cohort Heatmaps
 # ---------------------------------------------------------------------------
 
-def retention_counts_heatmap(df, granularity='weekly', save=None):
+def retention_counts_heatmap(df, granularity='weekly', segment_by=None, save=None):
     """
     Cohort heatmap showing raw active user counts per period.
 
@@ -186,26 +258,22 @@ def retention_counts_heatmap(df, granularity='weekly', save=None):
     ----------
     df : DataFrame with 'date' and 'user_id' columns
     granularity : 'weekly' or 'monthly'
+    segment_by : optional column to split on; renders one heatmap per value
     save : optional filename to save the figure (e.g. 'retention_counts.png')
 
     Returns
     -------
-    fig, ax
+    fig, ax — or, when segment_by is set, a list of (value, fig, ax)
     """
-    cohort_data, sizes, pcol, maxp, fmt = _prepare_cohorts(df, granularity)
-    pivot = _build_pivot(cohort_data, sizes, pcol, maxp, fmt, 'active_users')
-
-    period_label = 'Weeks' if granularity in ('week', 'weekly') else 'Months'
-    title = f'Cohort Retention Counts — Active Users per {period_label[:-1]}'
-    figsize = (20, 12) if granularity in ('week', 'weekly') else (16, 8)
-
-    fig, ax = _plot_heatmap(pivot, title, 'int', figsize, save)
-    ax.set_xlabel(f'{period_label} Since Signup')
-    ax.set_ylabel(f'Cohort {period_label[:-1]}')
-    return fig, ax
+    return _cohort_heatmap(
+        df, granularity, segment_by, save,
+        transform=lambda cd, s, p, m, f: _build_pivot(cd, s, p, m, f, 'active_users'),
+        title_fn=lambda g: f'Cohort Retention Counts — Active Users per {_period_label(g)[:-1]}',
+        annotation_fmt='int',
+    )
 
 
-def retention_rate_heatmap(df, granularity='weekly', save=None):
+def retention_rate_heatmap(df, granularity='weekly', segment_by=None, save=None):
     """
     Cohort heatmap showing % of each cohort still active.
 
@@ -213,27 +281,22 @@ def retention_rate_heatmap(df, granularity='weekly', save=None):
     ----------
     df : DataFrame with 'date' and 'user_id' columns
     granularity : 'weekly' or 'monthly'
+    segment_by : optional column to split on; renders one heatmap per value
     save : optional filename to save the figure
 
     Returns
     -------
-    fig, ax
+    fig, ax — or, when segment_by is set, a list of (value, fig, ax)
     """
-    cohort_data, sizes, pcol, maxp, fmt = _prepare_cohorts(df, granularity)
-    pivot = _build_pivot(cohort_data, sizes, pcol, maxp, fmt, 'retention_pct')
-
-    period_label = 'Weeks' if granularity in ('week', 'weekly') else 'Months'
-    prefix = '' if granularity in ('week', 'weekly') else 'Monthly '
-    title = f'{prefix}Cohort Retention Rate — % Still Active (colored per column)'
-    figsize = (20, 12) if granularity in ('week', 'weekly') else (16, 8)
-
-    fig, ax = _plot_heatmap(pivot, title, 'pct', figsize, save)
-    ax.set_xlabel(f'{period_label} Since Signup')
-    ax.set_ylabel(f'Cohort {period_label[:-1]}')
-    return fig, ax
+    return _cohort_heatmap(
+        df, granularity, segment_by, save,
+        transform=lambda cd, s, p, m, f: _build_pivot(cd, s, p, m, f, 'retention_pct'),
+        title_fn=lambda g: f'{_period_prefix(g)}Cohort Retention Rate — % Still Active (colored per column)',
+        annotation_fmt='pct',
+    )
 
 
-def churn_counts_heatmap(df, granularity='weekly', save=None):
+def churn_counts_heatmap(df, granularity='weekly', segment_by=None, save=None):
     """
     Cohort heatmap showing users lost per period (period-over-period diff).
 
@@ -241,33 +304,22 @@ def churn_counts_heatmap(df, granularity='weekly', save=None):
     ----------
     df : DataFrame with 'date' and 'user_id' columns
     granularity : 'weekly' or 'monthly'
+    segment_by : optional column to split on; renders one heatmap per value
     save : optional filename to save the figure
 
     Returns
     -------
-    fig, ax
+    fig, ax — or, when segment_by is set, a list of (value, fig, ax)
     """
-    cohort_data, sizes, pcol, maxp, fmt = _prepare_cohorts(df, granularity)
-    abs_pivot = _build_pivot(cohort_data, sizes, pcol, maxp, fmt, 'active_users')
-
-    # Diff (skip Users col, then re-add it)
-    users_col = abs_pivot['Users']
-    data_cols = abs_pivot.drop(columns='Users')
-    diff = data_cols.diff(axis=1).iloc[:, 1:]
-    diff.insert(0, 'Users', users_col)
-
-    period_label = 'Weeks' if granularity in ('week', 'weekly') else 'Months'
-    prefix = '' if granularity in ('week', 'weekly') else 'Monthly '
-    title = f'{prefix}Cohort Churn Counts — Users Lost per {period_label[:-1]}'
-    figsize = (20, 12) if granularity in ('week', 'weekly') else (16, 8)
-
-    fig, ax = _plot_heatmap(diff, title, 'signed_int', figsize, save)
-    ax.set_xlabel(f'{period_label} Since Signup')
-    ax.set_ylabel(f'Cohort {period_label[:-1]}')
-    return fig, ax
+    return _cohort_heatmap(
+        df, granularity, segment_by, save,
+        transform=lambda cd, s, p, m, f: _diff_pivot(_build_pivot(cd, s, p, m, f, 'active_users')),
+        title_fn=lambda g: f'{_period_prefix(g)}Cohort Churn Counts — Users Lost per {_period_label(g)[:-1]}',
+        annotation_fmt='signed_int',
+    )
 
 
-def churn_rate_heatmap(df, granularity='weekly', save=None):
+def churn_rate_heatmap(df, granularity='weekly', segment_by=None, save=None):
     """
     Cohort heatmap showing pp change in retention rate per period.
 
@@ -275,35 +327,26 @@ def churn_rate_heatmap(df, granularity='weekly', save=None):
     ----------
     df : DataFrame with 'date' and 'user_id' columns
     granularity : 'weekly' or 'monthly'
+    segment_by : optional column to split on; renders one heatmap per value
     save : optional filename to save the figure
 
     Returns
     -------
-    fig, ax
+    fig, ax — or, when segment_by is set, a list of (value, fig, ax)
     """
-    cohort_data, sizes, pcol, maxp, fmt = _prepare_cohorts(df, granularity)
-    pct_pivot = _build_pivot(cohort_data, sizes, pcol, maxp, fmt, 'retention_pct')
+    def _title(g):
+        pl = _period_label(g)[:-1]
+        return f'{_period_prefix(g)}Cohort Churn Rate — pp Change in Retention {pl}-over-{pl}'
 
-    users_col = pct_pivot['Users']
-    data_cols = pct_pivot.drop(columns='Users')
-    diff = data_cols.diff(axis=1).iloc[:, 1:]
-    diff.insert(0, 'Users', users_col)
-
-    period_label = 'Weeks' if granularity in ('week', 'weekly') else 'Months'
-    prefix = '' if granularity in ('week', 'weekly') else 'Monthly '
-    title = (
-        f'{prefix}Cohort Churn Rate — pp Change in Retention '
-        f'{period_label[:-1]}-over-{period_label[:-1]}'
+    return _cohort_heatmap(
+        df, granularity, segment_by, save,
+        transform=lambda cd, s, p, m, f: _diff_pivot(_build_pivot(cd, s, p, m, f, 'retention_pct')),
+        title_fn=_title,
+        annotation_fmt='signed_pp',
     )
-    figsize = (20, 12) if granularity in ('week', 'weekly') else (16, 8)
-
-    fig, ax = _plot_heatmap(diff, title, 'signed_pp', figsize, save)
-    ax.set_xlabel(f'{period_label} Since Signup')
-    ax.set_ylabel(f'Cohort {period_label[:-1]}')
-    return fig, ax
 
 
-def vs_average_heatmap(df, granularity='weekly', save=None):
+def vs_average_heatmap(df, granularity='weekly', segment_by=None, save=None):
     """
     Cohort heatmap showing each cohort's deviation from average retention.
 
@@ -311,40 +354,36 @@ def vs_average_heatmap(df, granularity='weekly', save=None):
     ----------
     df : DataFrame with 'date' and 'user_id' columns
     granularity : 'weekly' or 'monthly'
+    segment_by : optional column to split on; renders one heatmap per value
     save : optional filename to save the figure
 
     Returns
     -------
-    fig, ax
+    fig, ax — or, when segment_by is set, a list of (value, fig, ax)
     """
-    cohort_data, sizes, pcol, maxp, fmt = _prepare_cohorts(df, granularity)
-    pct_pivot = _build_pivot(cohort_data, sizes, pcol, maxp, fmt, 'retention_pct')
+    def _deviation(cohort_data, sizes, pcol, maxp, fmt):
+        pivot = _build_pivot(cohort_data, sizes, pcol, maxp, fmt, 'retention_pct')
+        users_col = pivot['Users']
+        data_cols = pivot.drop(columns='Users')
+        deviation = data_cols.subtract(data_cols.mean(axis=0), axis=1)
+        deviation.insert(0, 'Users', users_col)
+        return deviation
 
-    users_col = pct_pivot['Users']
-    data_cols = pct_pivot.drop(columns='Users')
-    col_means = data_cols.mean(axis=0)
-    deviation = data_cols.subtract(col_means, axis=1)
-    deviation.insert(0, 'Users', users_col)
+    def _title(g):
+        tail = f' per {_period_label(g)[:-1]}' if g in ('week', 'weekly') else ''
+        return f'{_period_prefix(g)}Cohort vs Average — Deviation from Average Retention{tail}'
 
-    period_label = 'Weeks' if granularity in ('week', 'weekly') else 'Months'
-    prefix = '' if granularity in ('week', 'weekly') else 'Monthly '
-    title = (
-        f'{prefix}Cohort vs Average — Deviation from Average Retention'
-        + (f' per {period_label[:-1]}' if granularity in ('week', 'weekly') else '')
+    return _cohort_heatmap(
+        df, granularity, segment_by, save,
+        transform=_deviation, title_fn=_title, annotation_fmt='signed_pp',
     )
-    figsize = (20, 12) if granularity in ('week', 'weekly') else (16, 8)
-
-    fig, ax = _plot_heatmap(deviation, title, 'signed_pp', figsize, save)
-    ax.set_xlabel(f'{period_label} Since Signup')
-    ax.set_ylabel(f'Cohort {period_label[:-1]}')
-    return fig, ax
 
 
 # ---------------------------------------------------------------------------
 # Public API — Retention Curve
 # ---------------------------------------------------------------------------
 
-def retention_curve(df, max_periods=40, save=None):
+def retention_curve(df, max_periods=40, segment_by=None, save=None):
     """
     Average retention curve across all weekly cohorts.
 
@@ -352,6 +391,7 @@ def retention_curve(df, max_periods=40, save=None):
     ----------
     df : DataFrame with 'date' and 'user_id' columns
     max_periods : max weeks to show on x-axis
+    segment_by : optional column to split on; overlays one line per value
     save : optional filename to save the figure
 
     Returns
@@ -361,33 +401,40 @@ def retention_curve(df, max_periods=40, save=None):
     sns.set_theme(style="whitegrid")
     palette = sns.color_palette("muted")
 
-    cohort_data, sizes, pcol, maxp, fmt = _prepare_cohorts(df, 'weekly')
-
-    avg_retention = (
-        cohort_data
-        .groupby('periods_since_signup')['retention_pct']
-        .mean()
-        .reset_index()
-    )
-    avg_retention = avg_retention[avg_retention['periods_since_signup'] <= max_periods]
+    def _avg_curve(sub):
+        cohort_data, *_ = _prepare_cohorts(sub, 'weekly')
+        avg = (
+            cohort_data.groupby('periods_since_signup')['retention_pct']
+            .mean().reset_index()
+        )
+        return avg[avg['periods_since_signup'] <= max_periods]
 
     fig, ax = plt.subplots(figsize=(12, 6))
+    xmax = 0
+    for i, (value, sub) in enumerate(_segment_values(df, segment_by)):
+        avg = _avg_curve(sub)
+        color = palette[i % len(palette)]
+        sns.lineplot(
+            data=avg, x='periods_since_signup', y='retention_pct',
+            color=color, linewidth=2.5, ax=ax,
+            label=(None if value is None else f'{segment_by}={value}'),
+        )
+        if value is None:  # keep the single-curve look unchanged
+            ax.fill_between(
+                avg['periods_since_signup'], avg['retention_pct'],
+                alpha=0.15, color=color,
+            )
+        xmax = max(xmax, int(avg['periods_since_signup'].max()))
 
-    sns.lineplot(
-        data=avg_retention, x='periods_since_signup', y='retention_pct',
-        color=palette[0], linewidth=2.5, ax=ax,
-    )
-    ax.fill_between(
-        avg_retention['periods_since_signup'],
-        avg_retention['retention_pct'],
-        alpha=0.15, color=palette[0],
-    )
-
-    ax.set_title('Overall Retention Curve', fontsize=16, fontweight='bold')
+    title = 'Overall Retention Curve'
+    if segment_by is not None:
+        title += f' by {segment_by}'
+        ax.legend(title=segment_by)
+    ax.set_title(title, fontsize=16, fontweight='bold')
     ax.set_xlabel('Weeks Since First Activity')
     ax.set_ylabel('% of Cohort Still Active')
     ax.set_ylim(0, 105)
-    ax.set_xlim(0, avg_retention['periods_since_signup'].max())
+    ax.set_xlim(0, xmax)
 
     plt.tight_layout()
     if save:
@@ -477,7 +524,7 @@ def usage_frequency(df, save=None):
 # Public API — Lifecycle States
 # ---------------------------------------------------------------------------
 
-def lifecycle_states(df, save_prefix=None):
+def lifecycle_states(df, segment_by=None, save_prefix=None):
     """
     Classify users into lifecycle states and produce 2 charts:
     1. Stacked bar (bridge chart)
@@ -486,14 +533,30 @@ def lifecycle_states(df, save_prefix=None):
     Parameters
     ----------
     df : DataFrame with 'date' and 'user_id' columns
+    segment_by : optional column to split on; renders the pair of charts per value
     save_prefix : optional prefix for saving 2 PNGs
                   (e.g. 'output' → output_bars.png, output_quick_ratio.png)
 
     Returns
     -------
-    states_df : DataFrame with weekly lifecycle state counts
-    figs : tuple of (fig1, fig2)
+    When segment_by is None: (states_df, (fig1, fig2)).
+    When segment_by is set: a list of (value, states_df, (fig1, fig2)).
     """
+    results = []
+    for value, sub in _segment_values(df, segment_by):
+        suffix = '' if value is None else f' — {segment_by}={value}'
+        prefix = save_prefix if value is None else (
+            f'{save_prefix}_{value}' if save_prefix else None
+        )
+        out = _lifecycle_one(sub, prefix, suffix)
+        if value is None:
+            return out
+        results.append((value, *out))
+    return results
+
+
+def _lifecycle_one(df, save_prefix, title_suffix=''):
+    """Build the lifecycle states table + the two charts for one (sub)frame."""
     sns.set_theme(style="whitegrid")
     palette = sns.color_palette("muted")
 
@@ -559,7 +622,7 @@ def lifecycle_states(df, save_prefix=None):
     ax3.bar(x, -states_df['Churned'], width, bottom=-states_df['At-Risk'],
             label='Churned', color=palette[3], alpha=0.7)
     ax3.axhline(y=0, color='grey', linewidth=0.8)
-    ax3.set_title('User Lifecycle Buckets — Weekly Breakdown',
+    ax3.set_title('User Lifecycle Buckets — Weekly Breakdown' + title_suffix,
                   fontsize=16, fontweight='bold')
     ax3.set_xlabel('Week')
     ax3.set_ylabel('Users')
@@ -583,7 +646,7 @@ def lifecycle_states(df, save_prefix=None):
     sns.lineplot(data=states_df, x='week', y='Quick Ratio',
                  color=palette[0], linewidth=2.5, ax=ax4)
     ax4.axhline(y=1, color='grey', linewidth=1, linestyle='--')
-    ax4.set_title('Quick Ratio — (New + Resurrected) / Churned',
+    ax4.set_title('Quick Ratio — (New + Resurrected) / Churned' + title_suffix,
                   fontsize=16, fontweight='bold')
     ax4.set_xlabel('Week')
     ax4.set_ylabel('Quick Ratio')

@@ -61,10 +61,13 @@ Always read the **overall** picture before any segment. Don't open with a segmen
 chart — segments only mean something against the whole.
 
 **Phase 1 — Overall (un-segmented):**
-1. **`retention_curve(df)`** — the overall decay shape: how fast do we lose users?
-2. **`lifecycle_states(df)`** — weekly New / Retained / Resurrected / At-Risk /
+1. **`usage_frequency(df)`** — the engagement-cadence histogram (avg active days
+   per month per user): is this a daily, weekly, or monthly product? Use it to
+   frame the core metric *before* charting retention.
+2. **`retention_curve(df)`** — the overall decay shape: how fast do we lose users?
+3. **`lifecycle_states(df)`** — weekly New / Retained / Resurrected / At-Risk /
    Churned plus the Quick Ratio (>1 growing net, <1 shrinking).
-3. **Cohort analysis** — the heatmaps: lead with `retention_rate_heatmap(df)`, then
+4. **Cohort analysis** — the heatmaps: lead with `retention_rate_heatmap(df)`, then
    `churn_rate_heatmap` / `vs_average_heatmap` to localize where a cohort broke.
 
 **Phase 2 — Segment drill-down (user's choice):** once the overall picture is read,
@@ -78,9 +81,10 @@ This skill *is* the exercise — drive the two phases one step at a time, don't 
 every chart at once:
 
 - **Step 0:** run the **data-quality-gate** and report PASS/FAIL before any chart.
-- **Phase 1:** for each overall view (curve → lifecycle → cohort): run **one** view,
-  give the plain-English read (cite file + columns + date range), then **pause** for
-  the user's interpretation before advancing. Offer the natural next view each time.
+- **Phase 1:** for each overall view (frequency → curve → lifecycle → cohort): run
+  **one** view, give the plain-English read (cite file + columns + date range), then
+  **pause** for the user's interpretation before advancing. Offer the next view each
+  time. (Frequency comes first because it sets what "active" should mean.)
 - **Phase 2:** ask **which segment(s) or combination** they want to drill into, then
   re-run the relevant view segmented and read it against the overall.
 

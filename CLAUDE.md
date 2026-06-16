@@ -34,7 +34,8 @@ package or skills should hard-code a specific dataset.
 
 Two phases, **overall before segments** (the retention-analysis skill drives it
 step-by-step): **(0)** run the data-quality-gate, then **Phase 1 — overall:**
-**(1)** retention curve → **(2)** lifecycle bars + Quick Ratio → **(3)** cohort
+**(1)** usage-frequency histogram (the engagement cadence — frames the metric) →
+**(2)** retention curve → **(3)** lifecycle bars + Quick Ratio → **(4)** cohort
 analysis (heatmaps), all un-segmented. **Phase 2:** ask the user which segment(s)
 or combination to drill into, then re-run with `segment_by=`. Use
 `active_event=<brief core_action>` when retention should mean "did the core action".

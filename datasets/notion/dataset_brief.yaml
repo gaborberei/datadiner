@@ -9,18 +9,18 @@
 brief_version: 1
 answer_key: "ground_truth_config.yaml — do NOT open before your analysis is written down"
 
-# Machine-readable layer: lets analysis tooling configure itself without
-# guessing. Extra keys are allowed anywhere.
+# Machine-readable layer: lets analysis tooling (e.g. the activation pipeline's
+# brief.py) configure itself without guessing. Extra keys are allowed anywhere.
 schema:
   granularity: event                  # one row per logged event (has event_time)
   time_column: event_time
-  # no count_column — this is a per-event log
+  # no count_column — this is a per-event log, not a weekly/daily aggregate
   primary_key: [event_time, user_id, event_type]
   dtypes:
-    app_version: str                  # parses as float otherwise
+    app_version: str                  # parses as float otherwise ("2.3" -> 2.3)
 
 analysis:
-  core_action: page_created
+  core_action: page_created           # the core production event (see columns below)
   natural_frequency: weekly
   # retention_horizon_weeks: 12       # not pinned — pick from the curve
   setup_window_days: 1
@@ -29,57 +29,58 @@ analysis:
   segment_cols: [segment, acquisition_channel, country, platform, app_version]
 
 data_quality:
-  sparsity: active_periods_only
+  sparsity: active_periods_only       # a user has rows only in periods they were active
   event_count_min: 1
 
 dataset:
-  file: causal_shocks_with_ab_test_events.csv
+  file: notion_causal_events.csv
   product: "Notion-like collaboration app (pages, AI assistant, sharing, comments, tables)"
   description: >
     Event-level product-analytics data for calendar year 2024. Users sign up in
-    weekly cohorts and create/view content. The company ran TWO honest A/B
-    experiments during the year (details below), scheduled so they do not
-    overlap each other or any incident window. A number of real-world incidents
-    ("shocks") also left marks on the data.
-  rows: 8028603
-  users: ~9797
+    weekly cohorts and create/view content. Somewhere in this year a number of
+    real-world incidents ("shocks") left marks on the data. This is the beginner
+    dataset — the shocks are designed to be detectable. No A/B experiments ran.
+  rows: 8207444
+  users: ~9749
 
 task:
   - >
-    Find the anomalies/shocks: WHEN (weeks), WHICH metric(s), approximate
-    MAGNITUDE, plausible ROOT CAUSE. The number and type of shocks is not given.
-  - >
-    Read out both A/B experiments: estimated lift on the target metric with a
-    confidence interval, a sample-ratio-mismatch sanity check, and a ship /
-    no-ship recommendation. Per-user activity is heavy-tailed, so cluster at the
-    user level. NOTE: variant assignment is NOT inline in the events file — join
-    causal_shocks_with_ab_test_experiment_assignments.csv (experiment, user_id,
-    group, first_exposed_week) on user_id.
+    Find the anomalies/shocks: for each, identify WHEN (weeks), WHICH metric(s)
+    it moved, the approximate MAGNITUDE, and the most plausible ROOT CAUSE
+    (product change, marketing, outage, tracking, competition). The number and
+    type of shocks is not given.
   - >
     Summarize overall product health: growth, retention, engagement mix.
+  - >
+    (Activation lens) Define the habit / aha / setup moments and read out the
+    activation funnel and segmented survival.
 
 grain: >
   One row per logged event: (event_time, user_id, event_type) plus the user's
-  fixed dimensions. A user appears only in periods they were active; derive
-  retention from presence/absence after bucketing event_time into weeks. First
-  event = signup; first active week = the Monday-week of min(event_time).
+  fixed dimensions repeated on every row. A user appears only in periods they
+  were active, so retention/churn must be derived from presence/absence after
+  bucketing event_time into weeks. A user's first event is their signup; first
+  active week = the Monday-week of min(event_time).
 
 retention_metric:
   activity_definition: >
     A user is ACTIVE in a week if they have at least one event that week,
-    regardless of event_type (every active week also contains a page_created).
+    regardless of event_type (every active week also contains at least one
+    page_created).
   cohort_definition: >
-    Signup cohort = FIRST active week (cohort_week = Monday-week of
-    min(event_time) per user). Signup and first activity coincide.
+    A user's signup cohort is their FIRST active week (cohort_week =
+    the Monday-week of min(event_time) per user). Signup and first activity
+    coincide.
   retention_rate: >
     Classic N-week (calendar-week, non-rolling) retention:
     retention(cohort, age) = unique cohort users active in week
     (cohort_week + age) / cohort size. Age 0 is 1.0 by construction.
   churn_and_resurrection: >
-    Churn is just absence. Users CAN return after inactive weeks, so curves need
-    not be monotonic; compute each (cohort, age) cell independently.
+    Churn is just absence — there is no churn event. Users CAN return after
+    inactive weeks, so per-cohort curves need not be monotonic; compute each
+    (cohort, age) cell independently.
   weekly_active_users: >
-    WAU(week) = unique user_ids with any event that week.
+    WAU(week) = unique user_ids with any event that week — the headline series.
 
 time_coverage:
   start_week: "2024-01-01"   # a Monday; weeks run Mon-Sun
@@ -108,14 +109,19 @@ columns:
     type: string
     description: "what the user did; one logged action per row"
     values:
-      page_created: "user created a new page/document. The core production event; present every active week."
-      page_view: "user opened/viewed a page. Consumption-side, highest-volume; believed downstream of content activity."
-      used_ai: "user invoked the AI writing assistant (one event per invocation)"
+      page_created: >
+        user created a new page/document. The core production event: every
+        active user creates at least one page per active week.
+      page_view: >
+        user opened/viewed a page (their own or someone else's). The
+        consumption-side event and the highest-volume type; believed to be
+        downstream of content activity.
+      used_ai: "user invoked the AI writing assistant on a page (one event per invocation)"
       shared: "user shared a page with another person/workspace (one event per share)"
       commented: "user posted a comment on a page (one event per comment)"
-      created_table: "user added a table/database block (one event per table)"
-      upgraded: "plan moved up one tier (free->pro or pro->team). Rare by design."
-      downgraded: "plan moved down one tier; same mechanics as upgraded. Rare."
+      created_table: "user added a table/database block to a page (one event per table)"
+      upgraded: "user's plan moved up one tier (free->pro or pro->team). Rare by design."
+      downgraded: "user's plan moved down one tier; same mechanics as upgraded. Rare."
   segment:
     type: string
     description: "latent behavioural cohort assigned at signup (engagement level)"
@@ -134,31 +140,17 @@ columns:
     values: [web, ios, android]
   app_version:
     type: string
-    description: "app release the user is on. Parse as string, otherwise loads as float."
+    description: >
+      app release the user is on (users adopt new releases gradually). NOTE:
+      parse as string (dtype={'app_version': str}), otherwise loads as float.
     values: ["2.3", "2.4"]
 
 known_context:
-  experiments:
-    - name: share_button_redesign
-      # variant_column omitted — assignment is in a SEPARATE file, not inline:
-      assignments_file: causal_shocks_with_ab_test_experiment_assignments.csv
-      control_label: control
-      window_abs_weeks: [15, 24]
-      change: "redesigned share button intended to increase page sharing"
-      target_metric: "shared events per page_created"
-      assignment: "50/50 randomized; only users who signed up during the window were enrolled (scope: new_users)"
-    - name: comment_prompts
-      assignments_file: causal_shocks_with_ab_test_experiment_assignments.csv
-      control_label: control
-      window_abs_weeks: [29, 39]
-      change: "inline prompts nudging users to comment"
-      target_metric: "commented events per page_created"
-      assignment: "50/50 randomized across all existing and new users (scope: all_users)"
-    # Effect sizes were NOT communicated — measuring them is part of the task.
+  experiments: []                     # no A/B experiments in this dataset
   releases:
     - "release 2.4 appears mid-year; existing users adopted it gradually"
   plans:
-    - "three plan tiers (free, pro, team); tier changes show up as upgraded/downgraded events"
+    - "three plan tiers exist (free, pro, team); tier changes show up as upgraded/downgraded events"
     - "current tier is not a column; approximate it from the change events"
   beliefs:
     - "page views are believed to be driven by content activity (pages created, shares, AI usage)"
@@ -167,5 +159,4 @@ known_context:
 hints:
   - "aggregate events to weekly totals per event_type first; index each series to a common base week"
   - "cut retention by signup cohort (first active week) as well as by calendar week"
-  - "for the A/B tests, join the assignments file on user_id and cluster variance at the user level"
   - "segment / channel / platform / app_version cuts are there for root-cause isolation"

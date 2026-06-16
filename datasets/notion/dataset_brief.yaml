@@ -31,6 +31,11 @@ analysis:
 data_quality:
   sparsity: active_periods_only       # a user has rows only in periods they were active
   event_count_min: 1
+  # ~2,098 rows (0.026%) are exact (event_time, user_id, event_type) repeats —
+  # same user firing the same event within one second (mostly page_view).
+  # Harmless for weekly retention; declared so the gate treats it as a known
+  # quirk, not a substituted file.
+  primary_key_dupes_max: 2098
 
 dataset:
   file: notion_causal_events.csv

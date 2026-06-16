@@ -16,6 +16,8 @@ Usage:
 """
 
 from . import io  # noqa: F401
+from . import profile  # noqa: F401
+from .profile import profile_events, brief_skeleton
 from .retention import (
     retention_counts_heatmap,
     retention_rate_heatmap,
@@ -29,6 +31,9 @@ from .retention import (
 
 __all__ = [
     "io",
+    "profile",
+    "profile_events",
+    "brief_skeleton",
     "retention_counts_heatmap",
     "retention_rate_heatmap",
     "churn_counts_heatmap",

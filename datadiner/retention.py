@@ -13,31 +13,83 @@ Usage:
     states_df, figs = lifecycle_states(df)
 """
 
+import warnings
+
 import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 
 
+# Readability guard: above this many segment groups, overlaid lines / panels
+# stop being legible, so warn (the skill should ask the user to narrow down).
+_MAX_SEGMENT_GROUPS = 30
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+def _segment_cols(segment_by):
+    """Normalize segment_by (None | str | list) to a list of column names."""
+    if segment_by is None:
+        return []
+    return [segment_by] if isinstance(segment_by, str) else list(segment_by)
+
+
+def _segment_name(segment_by):
+    """Human label for the segment dimension(s), e.g. 'country, platform'."""
+    return ", ".join(_segment_cols(segment_by))
+
 
 def _segment_values(df, segment_by):
     """Yield (label, sub_df) pairs to run a view over.
 
     With segment_by=None this is a single (None, df) pass — the un-segmented
-    behaviour. Otherwise it returns one (value, df[df[col]==value]) pair per
-    distinct, non-null value of the segment column, sorted for stable output.
+    behaviour. A single column splits on its values; a list of columns splits on
+    the cross-tab of their value combinations. `label` is a ready display string
+    like 'country=US, platform=web' (or None when not segmenting).
     """
-    if segment_by is None:
+    cols = _segment_cols(segment_by)
+    if not cols:
         return [(None, df)]
-    if segment_by not in df.columns:
+    missing = [c for c in cols if c not in df.columns]
+    if missing:
         raise ValueError(
-            f"segment_by={segment_by!r} not in columns {list(df.columns)}; "
-            f"pass a column declared in the dataset brief's analysis.segment_cols"
+            f"segment_by column(s) {missing} not in {list(df.columns)}; "
+            f"pass column(s) from the dataset brief's analysis.segment_cols"
         )
-    return [(v, df[df[segment_by] == v]) for v in sorted(df[segment_by].dropna().unique())]
+    groups = []
+    for key, sub in df.groupby(cols, sort=True):
+        key = key if isinstance(key, tuple) else (key,)
+        label = ", ".join(f"{c}={v}" for c, v in zip(cols, key))
+        groups.append((label, sub))
+    if len(groups) > _MAX_SEGMENT_GROUPS:
+        warnings.warn(
+            f"{len(groups)} segment groups for {cols}; this is hard to read — "
+            f"consider fewer columns or specific values."
+        )
+    return groups
+
+
+def _filter_active(df, active_event):
+    """Restrict to rows of the core action, so 'active' = did that event.
+
+    With active_event=None the frame is returned unchanged (any row = active).
+    """
+    if active_event is None:
+        return df
+    if "event_type" not in df.columns:
+        raise ValueError(
+            "active_event was set but there is no 'event_type' column to filter on"
+        )
+    out = df[df["event_type"] == active_event]
+    if out.empty:
+        raise ValueError(
+            f"no rows with event_type == {active_event!r}; "
+            f"present types: {sorted(df['event_type'].unique())[:10]}"
+        )
+    return out
 
 
 def _prepare_cohorts(df, granularity='weekly'):
@@ -191,42 +243,49 @@ def _plot_heatmap(pivot, title, annotation_fmt, figsize, save=None):
     return fig, ax
 
 
-def _seg_save(save, value):
-    """Insert the segment value into a save filename so panels don't collide."""
-    if not save or value is None:
+def _safe_label(label):
+    """Filesystem-safe version of a segment label, e.g. 'country=US' -> 'country-US'."""
+    return label.replace('=', '-').replace(', ', '_').replace(' ', '_')
+
+
+def _seg_save(save, label):
+    """Insert the segment label into a save filename so panels don't collide."""
+    if not save or label is None:
         return save
     from pathlib import Path
     p = Path(save)
-    return str(p.with_name(f"{p.stem}_{value}{p.suffix}"))
+    return str(p.with_name(f"{p.stem}_{_safe_label(label)}{p.suffix}"))
 
 
-def _cohort_heatmap(df, granularity, segment_by, save, transform, title_fn, annotation_fmt):
+def _cohort_heatmap(df, granularity, segment_by, active_event, save,
+                    transform, title_fn, annotation_fmt):
     """Shared driver for the five cohort heatmaps.
 
     `transform(cohort_data, sizes, pcol, maxp, fmt) -> pivot` builds the view's
     pivot; `title_fn(granularity) -> str` builds its title. With segment_by set,
-    renders one heatmap per segment value and returns a list of
-    (value, fig, ax); otherwise returns a single (fig, ax).
+    renders one heatmap per segment value (or value-combination) and returns a
+    list of (label, fig, ax); otherwise returns a single (fig, ax).
     """
+    df = _filter_active(df, active_event)
     results = []
-    for value, sub in _segment_values(df, segment_by):
+    for label, sub in _segment_values(df, segment_by):
         cohort_data, sizes, pcol, maxp, fmt = _prepare_cohorts(sub, granularity)
         pivot = transform(cohort_data, sizes, pcol, maxp, fmt)
 
         period_label = 'Weeks' if granularity in ('week', 'weekly') else 'Months'
         figsize = (20, 12) if granularity in ('week', 'weekly') else (16, 8)
-        suffix = '' if value is None else f' — {segment_by}={value}'
+        suffix = '' if label is None else f' — {label}'
 
         fig, ax = _plot_heatmap(
             pivot, title_fn(granularity) + suffix, annotation_fmt,
-            figsize, _seg_save(save, value),
+            figsize, _seg_save(save, label),
         )
         ax.set_xlabel(f'{period_label} Since Signup')
         ax.set_ylabel(f'Cohort {period_label[:-1]}')
 
-        if value is None:
+        if label is None:
             return fig, ax
-        results.append((value, fig, ax))
+        results.append((label, fig, ax))
     return results
 
 
@@ -250,7 +309,7 @@ def _diff_pivot(pivot):
 # Public API — Cohort Heatmaps
 # ---------------------------------------------------------------------------
 
-def retention_counts_heatmap(df, granularity='weekly', segment_by=None, save=None):
+def retention_counts_heatmap(df, granularity='weekly', segment_by=None, active_event=None, save=None):
     """
     Cohort heatmap showing raw active user counts per period.
 
@@ -258,22 +317,25 @@ def retention_counts_heatmap(df, granularity='weekly', segment_by=None, save=Non
     ----------
     df : DataFrame with 'date' and 'user_id' columns
     granularity : 'weekly' or 'monthly'
-    segment_by : optional column to split on; renders one heatmap per value
+    segment_by : optional column or list of columns to split on; renders one
+        heatmap per value (or value-combination)
+    active_event : optional event_type to count as 'active' (e.g. the brief's
+        core_action); defaults to counting any row
     save : optional filename to save the figure (e.g. 'retention_counts.png')
 
     Returns
     -------
-    fig, ax — or, when segment_by is set, a list of (value, fig, ax)
+    fig, ax — or, when segment_by is set, a list of (label, fig, ax)
     """
     return _cohort_heatmap(
-        df, granularity, segment_by, save,
+        df, granularity, segment_by, active_event, save,
         transform=lambda cd, s, p, m, f: _build_pivot(cd, s, p, m, f, 'active_users'),
         title_fn=lambda g: f'Cohort Retention Counts — Active Users per {_period_label(g)[:-1]}',
         annotation_fmt='int',
     )
 
 
-def retention_rate_heatmap(df, granularity='weekly', segment_by=None, save=None):
+def retention_rate_heatmap(df, granularity='weekly', segment_by=None, active_event=None, save=None):
     """
     Cohort heatmap showing % of each cohort still active.
 
@@ -281,22 +343,25 @@ def retention_rate_heatmap(df, granularity='weekly', segment_by=None, save=None)
     ----------
     df : DataFrame with 'date' and 'user_id' columns
     granularity : 'weekly' or 'monthly'
-    segment_by : optional column to split on; renders one heatmap per value
+    segment_by : optional column or list of columns to split on; renders one
+        heatmap per value (or value-combination)
+    active_event : optional event_type to count as 'active' (e.g. the brief's
+        core_action); defaults to counting any row
     save : optional filename to save the figure
 
     Returns
     -------
-    fig, ax — or, when segment_by is set, a list of (value, fig, ax)
+    fig, ax — or, when segment_by is set, a list of (label, fig, ax)
     """
     return _cohort_heatmap(
-        df, granularity, segment_by, save,
+        df, granularity, segment_by, active_event, save,
         transform=lambda cd, s, p, m, f: _build_pivot(cd, s, p, m, f, 'retention_pct'),
         title_fn=lambda g: f'{_period_prefix(g)}Cohort Retention Rate — % Still Active (colored per column)',
         annotation_fmt='pct',
     )
 
 
-def churn_counts_heatmap(df, granularity='weekly', segment_by=None, save=None):
+def churn_counts_heatmap(df, granularity='weekly', segment_by=None, active_event=None, save=None):
     """
     Cohort heatmap showing users lost per period (period-over-period diff).
 
@@ -304,22 +369,25 @@ def churn_counts_heatmap(df, granularity='weekly', segment_by=None, save=None):
     ----------
     df : DataFrame with 'date' and 'user_id' columns
     granularity : 'weekly' or 'monthly'
-    segment_by : optional column to split on; renders one heatmap per value
+    segment_by : optional column or list of columns to split on; renders one
+        heatmap per value (or value-combination)
+    active_event : optional event_type to count as 'active' (e.g. the brief's
+        core_action); defaults to counting any row
     save : optional filename to save the figure
 
     Returns
     -------
-    fig, ax — or, when segment_by is set, a list of (value, fig, ax)
+    fig, ax — or, when segment_by is set, a list of (label, fig, ax)
     """
     return _cohort_heatmap(
-        df, granularity, segment_by, save,
+        df, granularity, segment_by, active_event, save,
         transform=lambda cd, s, p, m, f: _diff_pivot(_build_pivot(cd, s, p, m, f, 'active_users')),
         title_fn=lambda g: f'{_period_prefix(g)}Cohort Churn Counts — Users Lost per {_period_label(g)[:-1]}',
         annotation_fmt='signed_int',
     )
 
 
-def churn_rate_heatmap(df, granularity='weekly', segment_by=None, save=None):
+def churn_rate_heatmap(df, granularity='weekly', segment_by=None, active_event=None, save=None):
     """
     Cohort heatmap showing pp change in retention rate per period.
 
@@ -327,26 +395,29 @@ def churn_rate_heatmap(df, granularity='weekly', segment_by=None, save=None):
     ----------
     df : DataFrame with 'date' and 'user_id' columns
     granularity : 'weekly' or 'monthly'
-    segment_by : optional column to split on; renders one heatmap per value
+    segment_by : optional column or list of columns to split on; renders one
+        heatmap per value (or value-combination)
+    active_event : optional event_type to count as 'active' (e.g. the brief's
+        core_action); defaults to counting any row
     save : optional filename to save the figure
 
     Returns
     -------
-    fig, ax — or, when segment_by is set, a list of (value, fig, ax)
+    fig, ax — or, when segment_by is set, a list of (label, fig, ax)
     """
     def _title(g):
         pl = _period_label(g)[:-1]
         return f'{_period_prefix(g)}Cohort Churn Rate — pp Change in Retention {pl}-over-{pl}'
 
     return _cohort_heatmap(
-        df, granularity, segment_by, save,
+        df, granularity, segment_by, active_event, save,
         transform=lambda cd, s, p, m, f: _diff_pivot(_build_pivot(cd, s, p, m, f, 'retention_pct')),
         title_fn=_title,
         annotation_fmt='signed_pp',
     )
 
 
-def vs_average_heatmap(df, granularity='weekly', segment_by=None, save=None):
+def vs_average_heatmap(df, granularity='weekly', segment_by=None, active_event=None, save=None):
     """
     Cohort heatmap showing each cohort's deviation from average retention.
 
@@ -354,12 +425,15 @@ def vs_average_heatmap(df, granularity='weekly', segment_by=None, save=None):
     ----------
     df : DataFrame with 'date' and 'user_id' columns
     granularity : 'weekly' or 'monthly'
-    segment_by : optional column to split on; renders one heatmap per value
+    segment_by : optional column or list of columns to split on; renders one
+        heatmap per value (or value-combination)
+    active_event : optional event_type to count as 'active' (e.g. the brief's
+        core_action); defaults to counting any row
     save : optional filename to save the figure
 
     Returns
     -------
-    fig, ax — or, when segment_by is set, a list of (value, fig, ax)
+    fig, ax — or, when segment_by is set, a list of (label, fig, ax)
     """
     def _deviation(cohort_data, sizes, pcol, maxp, fmt):
         pivot = _build_pivot(cohort_data, sizes, pcol, maxp, fmt, 'retention_pct')
@@ -374,7 +448,7 @@ def vs_average_heatmap(df, granularity='weekly', segment_by=None, save=None):
         return f'{_period_prefix(g)}Cohort vs Average — Deviation from Average Retention{tail}'
 
     return _cohort_heatmap(
-        df, granularity, segment_by, save,
+        df, granularity, segment_by, active_event, save,
         transform=_deviation, title_fn=_title, annotation_fmt='signed_pp',
     )
 
@@ -383,7 +457,7 @@ def vs_average_heatmap(df, granularity='weekly', segment_by=None, save=None):
 # Public API — Retention Curve
 # ---------------------------------------------------------------------------
 
-def retention_curve(df, max_periods=40, segment_by=None, save=None):
+def retention_curve(df, max_periods=40, segment_by=None, active_event=None, save=None):
     """
     Average retention curve across all weekly cohorts.
 
@@ -391,7 +465,10 @@ def retention_curve(df, max_periods=40, segment_by=None, save=None):
     ----------
     df : DataFrame with 'date' and 'user_id' columns
     max_periods : max weeks to show on x-axis
-    segment_by : optional column to split on; overlays one line per value
+    segment_by : optional column or list of columns to split on; overlays one
+        line per value (or value-combination)
+    active_event : optional event_type to count as 'active' (e.g. the brief's
+        core_action); defaults to counting any row
     save : optional filename to save the figure
 
     Returns
@@ -400,6 +477,8 @@ def retention_curve(df, max_periods=40, segment_by=None, save=None):
     """
     sns.set_theme(style="whitegrid")
     palette = sns.color_palette("muted")
+
+    df = _filter_active(df, active_event)
 
     def _avg_curve(sub):
         cohort_data, *_ = _prepare_cohorts(sub, 'weekly')
@@ -411,15 +490,14 @@ def retention_curve(df, max_periods=40, segment_by=None, save=None):
 
     fig, ax = plt.subplots(figsize=(12, 6))
     xmax = 0
-    for i, (value, sub) in enumerate(_segment_values(df, segment_by)):
+    for i, (label, sub) in enumerate(_segment_values(df, segment_by)):
         avg = _avg_curve(sub)
         color = palette[i % len(palette)]
         sns.lineplot(
             data=avg, x='periods_since_signup', y='retention_pct',
-            color=color, linewidth=2.5, ax=ax,
-            label=(None if value is None else f'{segment_by}={value}'),
+            color=color, linewidth=2.5, ax=ax, label=label,
         )
-        if value is None:  # keep the single-curve look unchanged
+        if label is None:  # keep the single-curve look unchanged
             ax.fill_between(
                 avg['periods_since_signup'], avg['retention_pct'],
                 alpha=0.15, color=color,
@@ -428,8 +506,9 @@ def retention_curve(df, max_periods=40, segment_by=None, save=None):
 
     title = 'Overall Retention Curve'
     if segment_by is not None:
-        title += f' by {segment_by}'
-        ax.legend(title=segment_by)
+        seg_name = _segment_name(segment_by)
+        title += f' by {seg_name}'
+        ax.legend(title=seg_name)
     ax.set_title(title, fontsize=16, fontweight='bold')
     ax.set_xlabel('Weeks Since First Activity')
     ax.set_ylabel('% of Cohort Still Active')
@@ -524,7 +603,7 @@ def usage_frequency(df, save=None):
 # Public API — Lifecycle States
 # ---------------------------------------------------------------------------
 
-def lifecycle_states(df, segment_by=None, save_prefix=None):
+def lifecycle_states(df, segment_by=None, active_event=None, save_prefix=None):
     """
     Classify users into lifecycle states and produce 2 charts:
     1. Stacked bar (bridge chart)
@@ -533,25 +612,30 @@ def lifecycle_states(df, segment_by=None, save_prefix=None):
     Parameters
     ----------
     df : DataFrame with 'date' and 'user_id' columns
-    segment_by : optional column to split on; renders the pair of charts per value
+    segment_by : optional column or list of columns to split on; renders the
+        pair of charts per value (or value-combination)
+    active_event : optional event_type to count as 'active' (e.g. the brief's
+        core_action); defaults to counting any row
     save_prefix : optional prefix for saving 2 PNGs
                   (e.g. 'output' → output_bars.png, output_quick_ratio.png)
 
     Returns
     -------
     When segment_by is None: (states_df, (fig1, fig2)).
-    When segment_by is set: a list of (value, states_df, (fig1, fig2)).
+    When segment_by is set: a list of (label, states_df, (fig1, fig2)).
     """
+    df = _filter_active(df, active_event)
     results = []
-    for value, sub in _segment_values(df, segment_by):
-        suffix = '' if value is None else f' — {segment_by}={value}'
-        prefix = save_prefix if value is None else (
-            f'{save_prefix}_{value}' if save_prefix else None
-        )
+    for label, sub in _segment_values(df, segment_by):
+        suffix = '' if label is None else f' — {label}'
+        if save_prefix and label is not None:
+            prefix = f'{save_prefix}_{_safe_label(label)}'
+        else:
+            prefix = save_prefix
         out = _lifecycle_one(sub, prefix, suffix)
-        if value is None:
+        if label is None:
             return out
-        results.append((value, *out))
+        results.append((label, *out))
     return results
 
 

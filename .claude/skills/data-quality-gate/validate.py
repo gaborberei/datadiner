@@ -65,13 +65,14 @@ def main(brief_path: str) -> int:
     print(f"loaded {csv_path.name}: {len(df):,} rows × {len(df.columns)} columns\n")
 
     time_col = schema.get("time_column", "event_time")
+    user_col = schema.get("user_column", "user_id")
     count_col = schema.get("count_column")
     granularity = schema.get("granularity", "event")
 
     # --- declared columns exist -------------------------------------------
-    # time_col + user_id are always required. event_type / count_column are
+    # time_col + user_col are always required. event_type / count_column are
     # required only when the brief documents them (presence-only logs omit them).
-    declared = [time_col, "user_id"]
+    declared = [time_col, user_col]
     if "event_type" in columns_doc or analysis.get("core_action"):
         declared += ["event_type"]
     declared += [count_col] if count_col else []
@@ -120,10 +121,10 @@ def main(brief_path: str) -> int:
     # --- row / user counts -------------------------------------------------------
     if dataset.get("rows") is not None:
         check("dataset.rows", len(df) == int(dataset["rows"]), int(dataset["rows"]), len(df))
-    if dataset.get("users") is not None:
+    if dataset.get("users") is not None and user_col in df.columns:
         raw = str(dataset["users"]).replace("~", "").replace(",", "").strip()
         approx = "~" in str(dataset["users"])
-        n_users = df["user_id"].nunique()
+        n_users = df[user_col].nunique()
         target = int(raw)
         ok = abs(n_users - target) <= 0.05 * target if approx else n_users == target
         check(f"dataset.users ({'~5% tolerance' if approx else 'exact'})", ok, dataset["users"], n_users)
@@ -154,7 +155,7 @@ def main(brief_path: str) -> int:
             p = t.dt.normalize()
             period_days = 1
         unit = "week" if granularity == "weekly" else "day"
-        per = pd.DataFrame({"user_id": df["user_id"], "p": p})
+        per = pd.DataFrame({"user_id": df[user_col], "p": p})
         agg = per.groupby("user_id")["p"].agg(["min", "max", "nunique"])
         span = ((agg["max"] - agg["min"]).dt.days // period_days) + 1
         missing_periods = int((span - agg["nunique"]).sum())

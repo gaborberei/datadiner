@@ -2,84 +2,75 @@
 # DATASET BRIEF — read this first
 # =============================================================================
 # This file is the analyst-facing context: everything a data team would
-# realistically know about this dataset. It contains NO spoilers.
-# The answer key (ground_truth_config.yaml / ground_truth_users.csv) lives in
-# this same folder — do NOT open it before your analysis is written down.
+# realistically know about this dataset. It contains NO spoilers (the planted
+# shocks are for you to find). Do NOT open any answer key (ground_truth_*) that
+# may sit in this folder before your analysis is written down.
 
 brief_version: 1
-answer_key: "ground_truth_config.yaml — do NOT open before your analysis is written down"
 
-# Machine-readable layer: lets analysis tooling configure itself without
-# guessing. Extra keys are allowed anywhere.
 schema:
   granularity: event                  # one row per logged event (has event_time)
   time_column: event_time
-  # no count_column — per-event log
+  user_column: user_id
   primary_key: [event_time, user_id, event_type]
-  # no dtype hints needed — no version-like columns in this dataset
 
 analysis:
-  core_action: game_played            # the ONLY event type; "active" = played a game
+  core_action: game_played            # the only event type; "active" = played a game
   natural_frequency: weekly
-  # retention_horizon_weeks: 12       # not pinned — pick from the curve
-  setup_window_days: 1
-  aha_window_days: 7
-  habit_window_days: 28
   segment_cols: [segment, acquisition_channel, country, platform]
 
 data_quality:
-  sparsity: active_periods_only
+  sparsity: active_periods_only       # a user has rows only in periods they were active
   event_count_min: 1
+  # A handful of exact (event_time, user_id, event_type) repeats from
+  # second-resolution timestamps — benign, declared so the gate treats it as a
+  # known quirk rather than a substituted file.
+  primary_key_dupes_max: 4
 
 dataset:
   file: chess_games_events.csv
   product: "Chess.com-like app; the single core action is playing a game"
   description: >
-    Event-level product-analytics data for calendar year 2024. Players sign up
-    in weekly cohorts and play games — this is a SINGLE-EVENT dataset (only
-    game_played). Retention follows a Duolingo-style lifecycle; the activity
-    series carries genuine time-series variance (seasonality, autocorrelated
-    noise, and at least one news-driven spike). No A/B experiments ran.
+    Event-level product-analytics data for calendar year 2024. Players sign up in
+    weekly cohorts and play games — this is a SINGLE-EVENT dataset (only
+    game_played). The activity series carries genuine time-series variance
+    (seasonality, autocorrelated noise) and at least one news-driven spike. No A/B
+    experiments ran.
   rows: 477963
-  users: ~19063
+  users: 19063
 
 task:
   - >
-    Characterize retention & engagement: build the cohort retention curve and
-    the weekly-active-player series; identify the habit frequency (games on N
-    distinct days in the first M) that best predicts long-term retention.
+    Characterize retention & engagement: build the cohort retention curve and the
+    weekly-active-player series; read the lifecycle and Quick Ratio.
   - >
-    Find anomalies in the WAP/volume series: WHEN, MAGNITUDE, plausible ROOT
-    CAUSE (seasonality vs a real spike vs noise). The number of shocks is not
-    given.
+    Find anomalies in the activity/volume series: WHEN, MAGNITUDE, plausible ROOT
+    CAUSE (seasonality vs a real spike vs noise). The number of shocks is not given.
   - >
     Summarize overall product health: growth, retention, seasonality.
 
 grain: >
   One row per game_played event: (event_time, user_id, event_type) plus the
   player's fixed dimensions. A player appears only in periods they played, so
-  retention must be derived from presence/absence after bucketing event_time
-  into weeks. First event = signup; first active week = Monday-week of
-  min(event_time). event_type is constant (game_played); games-per-week is just
-  the row count per (user, week).
+  retention must be derived from presence/absence after bucketing event_time into
+  weeks. First event = signup; first active week = the Monday-week of
+  min(event_time). event_type is constant (game_played).
 
 retention_metric:
   activity_definition: >
-    A player is ACTIVE in a week if they have at least one game_played row that
-    week.
+    A player is ACTIVE in a week if they have at least one game_played row that week.
   cohort_definition: >
-    Signup cohort = FIRST active week (cohort_week = Monday-week of
+    Signup cohort = FIRST active week (cohort_week = the Monday-week of
     min(event_time) per user). Signup and first activity coincide.
   retention_rate: >
     Classic N-week (calendar-week, non-rolling) retention:
     retention(cohort, age) = unique cohort players active in week
     (cohort_week + age) / cohort size. Age 0 is 1.0 by construction.
   churn_and_resurrection: >
-    Churn is just absence. Players CAN return after inactive weeks, so curves
-    need not be monotonic; compute each (cohort, age) cell independently.
+    Churn is just absence. Players CAN return after inactive weeks, so curves need
+    not be monotonic; compute each (cohort, age) cell independently.
   weekly_active_users: >
-    WAP(week) = unique user_ids with a game_played row that week — the headline
-    series.
+    WAU(week) = unique user_ids with a game_played row that week — the headline series.
 
 time_coverage:
   start_week: "2024-01-01"   # a Monday; weeks run Mon-Sun
@@ -137,5 +128,4 @@ known_context:
 
 hints:
   - "since there is one event type, games-per-week = row count per (user, week)"
-  - "for the habit metric, count distinct active days in the first 28 days, not raw games"
-  - "cut retention and the WAP series by signup cohort, segment, channel, platform, country"
+  - "cut retention and the WAU series by signup cohort, segment, channel, platform, country"

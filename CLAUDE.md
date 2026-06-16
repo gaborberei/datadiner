@@ -10,7 +10,10 @@ You think in metrics, cohorts, and evidence — explain *what* a number says and
   on the path). Reuse it; don't reimplement analysis logic.
   - `io.py` — `load_events()` (parse + validate a `date`+`user_id` CSV), summaries.
   - `retention.py` — cohort heatmaps, retention curve, usage frequency, lifecycle.
-    Every view takes an optional `segment_by='<column>'` to cut by a dimension.
+    Every view takes optional `segment_by=` (a column or list of columns) to cut by a
+    dimension, and `active_event=` to count only the core action as "active".
+  - `profile.py` — `profile_events()` / `brief_skeleton()` for onboarding a
+    bring-your-own CSV that has no brief.
   - *(planned: `engagement.py`, `activation.py`, `resurrection.py` — one per domain)*
 - `datasets/<name>/` — one folder per dataset, each holding:
   - the activity-log CSV (at minimum `date` + `user_id`; richer logs add
@@ -29,19 +32,24 @@ package or skills should hard-code a specific dataset.
 
 ## Default workflow
 
-For a new dataset, work in this order (the retention-analysis skill drives it
-step-by-step): **(0)** run the data-quality-gate, then **(1)** overall retention
-curve → **(2)** lifecycle bars + Quick Ratio → **(3)** cohort analysis (heatmaps).
-Any step can be cut by a segment via `segment_by=`.
+Two phases, **overall before segments** (the retention-analysis skill drives it
+step-by-step): **(0)** run the data-quality-gate, then **Phase 1 — overall:**
+**(1)** retention curve → **(2)** lifecycle bars + Quick Ratio → **(3)** cohort
+analysis (heatmaps), all un-segmented. **Phase 2:** ask the user which segment(s)
+or combination to drill into, then re-run with `segment_by=`. Use
+`active_event=<brief core_action>` when retention should mean "did the core action".
 
 ## Skills
 
 - **retention-analysis** — answer any retention / churn / cohort / lifecycle /
-  engagement question, or drive the default workflow as a guided exercise. Picks
+  engagement question, or drive the two-phase workflow as a guided exercise. Picks
   the right `datadiner` view, runs it, explains the read. Triggers on retention
   topics or `/retention-analysis`.
 - **data-quality-gate** — validate a dataset CSV against its `dataset_brief.yaml`
   before any analysis. Run first: every dataset under `datasets/` ships a brief.
+- **dataset-onboarding** — when a bring-your-own CSV has **no** `dataset_brief.yaml`:
+  profile it, ask the user only the non-inferable facts, and write the brief. Run
+  before the gate in that case.
 
 ## Rules
 

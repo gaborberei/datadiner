@@ -1,0 +1,40 @@
+"""DataDiner — product analytics helper library.
+
+Shared, importable from anywhere in the repo (the repo root is the package's
+parent). Submodules:
+
+    retention   cohort heatmaps, retention curve, usage frequency, lifecycle states
+    io          shared event-log loading and summaries
+
+Planned: engagement, activation, resurrection (add a submodule per domain).
+
+Usage:
+    from datadiner.io import load_events
+    from datadiner.retention import retention_rate_heatmap
+    # convenience: retention's public API is also re-exported here, e.g.
+    from datadiner import retention_rate_heatmap
+"""
+
+from . import io  # noqa: F401
+from .retention import (
+    retention_counts_heatmap,
+    retention_rate_heatmap,
+    churn_counts_heatmap,
+    churn_rate_heatmap,
+    vs_average_heatmap,
+    retention_curve,
+    usage_frequency,
+    lifecycle_states,
+)
+
+__all__ = [
+    "io",
+    "retention_counts_heatmap",
+    "retention_rate_heatmap",
+    "churn_counts_heatmap",
+    "churn_rate_heatmap",
+    "vs_average_heatmap",
+    "retention_curve",
+    "usage_frequency",
+    "lifecycle_states",
+]

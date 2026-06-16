@@ -1,15 +1,16 @@
 """
-DataDiner Analytics Module
-==========================
+DataDiner — Retention module
+============================
 Reusable product analytics functions for retention, churn, and lifecycle analysis.
+Part of the `datadiner` package; works on any event log with `date` + `user_id`.
 
 Usage:
-    import pandas as pd
-    from datadiner import retention_rate_heatmap, lifecycle_states
+    from datadiner.io import load_events
+    from datadiner.retention import retention_rate_heatmap, lifecycle_states
 
-    df = pd.read_csv('your_data.csv', parse_dates=['date'])
+    df = load_events('your_data.csv')
     fig, ax = retention_rate_heatmap(df, granularity='weekly')
-    fig, ax = lifecycle_states(df)
+    states_df, figs = lifecycle_states(df)
 """
 
 import pandas as pd

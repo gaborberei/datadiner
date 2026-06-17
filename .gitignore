@@ -1,2 +1,7 @@
 .DS_Store
 *.csv
+
+# Answer keys / spoilers — never publish these (briefs are tracked, answers are not)
+ground_truth*.yaml
+ground_truth*.csv
+solutions.yaml

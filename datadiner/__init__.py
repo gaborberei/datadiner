@@ -6,6 +6,7 @@ parent). Submodules:
     retention   cohort heatmaps, retention curve, usage frequency, lifecycle states
     io          shared event-log loading and summaries
     report      bundle a run into output/<dataset>/<run>/ (charts + CSVs + report.md)
+    teaching    load_rubric() — private grading rubric for the retention-tutor skill
 
 Planned: engagement, activation, resurrection (add a submodule per domain).
 
@@ -29,16 +30,21 @@ from .retention import (
     usage_frequency,
     lifecycle_states,
     cohort_matrix,
+    cohort_patterns,
 )
 from . import report  # noqa: F401
 from .report import AnalysisReport, overall_report
+from . import teaching  # noqa: F401
+from .teaching import load_rubric
 
 __all__ = [
     "io",
     "profile",
     "report",
+    "teaching",
     "profile_events",
     "brief_skeleton",
+    "load_rubric",
     "retention_counts_heatmap",
     "retention_rate_heatmap",
     "churn_counts_heatmap",
@@ -48,6 +54,7 @@ __all__ = [
     "usage_frequency",
     "lifecycle_states",
     "cohort_matrix",
+    "cohort_patterns",
     "AnalysisReport",
     "overall_report",
 ]

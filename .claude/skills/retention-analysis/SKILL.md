@@ -177,9 +177,20 @@ exploratory view used to *pick* the metric).
 - **Counts vs rates:** counts heatmaps show absolute users (size of the problem);
   rate heatmaps show % still active (quality of retention). Lead with rates unless
   asked about absolute volume.
-- **Row read vs diagonal read:** a **row** is one cohort over its lifetime (does
-  this cohort retain?). A **diagonal** is one calendar period across all cohorts
-  (what happened to everyone in, say, week 12 of 2024 — the signature of a shock).
+- **Three lenses — read the heatmap by direction:**
+  - **Horizontal (row) = cohort-specific effects.** One cohort over its lifetime —
+    does *this* intake retain? Reflects acquisition campaigns or market expansion. A
+    *small* cohort with *strong* retention = low volume but high quality (e.g. reduced
+    spend, better-fit users); a large-but-weak row is the opposite.
+  - **Diagonal = simultaneous, all-cohort events.** One calendar period across every
+    cohort regardless of age — the signature of a shock that hits everyone at once
+    (feature launch, bug, an outage-style drop).
+  - **Vertical (column) = tenure milestones.** One age across all cohorts — the
+    "survival" moments common in trial/subscription products: drop-off after a 30-day
+    trial ends, churn spikes at annual renewal.
+  - `cohort_patterns(df, active_event=...)` surfaces the strongest signal of each
+    lens (where it is, magnitude, how many cohorts) to point you at what to drill —
+    it points, it doesn't conclude a cause.
 - **Coloring is column-normalized:** color compares cells *within the same
   period-since-signup*, not across columns. A green cell means "good *for that
   age*", not "high absolute retention".

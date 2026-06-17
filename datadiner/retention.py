@@ -510,6 +510,121 @@ def cohort_matrix(df, granularity='weekly', kind='rate', segment_by=None,
     return results
 
 
+# Below this many contributing cohorts, a calendar-period signal is too thin to
+# call "simultaneous across cohorts" — so the diagonal scan ignores it.
+_MIN_DIAGONAL_COHORTS = 3
+
+
+def cohort_patterns(df, granularity='weekly', active_event=None, top=3):
+    """Surface the strongest read-the-heatmap signals, as data (no chart).
+
+    A reading aid for the three cohort lenses — it points at *where* the matrix
+    moves so an analyst (or the tutor) can ask "what happened here?". It does not
+    conclude a cause.
+
+    Returns a dict with three lists, each sorted strongest-first, of
+    ``{'where', 'magnitude', ..., 'lens_hint'}``:
+
+    - ``horizontal`` — a **cohort** that beats/lags its peers on average (pp vs the
+      same-age average), with its ``size``. A small cohort that retains strongly is
+      the "low volume, high quality" signature (e.g. a leaner acquisition push).
+    - ``diagonal`` — a **calendar period** where many cohorts move together (mean pp
+      deviation across the anti-diagonal); the signature of a simultaneous,
+      all-cohort event (feature launch, bug, outage).
+    - ``vertical`` — a **tenure age** with an unusually steep cross-cohort drop above
+      the smooth decay (``excess`` pp); the survival-moment signature (trial end,
+      renewal).
+
+    Parameters
+    ----------
+    df : DataFrame with 'date' and 'user_id' columns
+    granularity : 'weekly' or 'monthly'
+    active_event : optional event_type to count as 'active'
+    top : how many signals to return per lens
+    """
+    dev = cohort_matrix(df, granularity, 'vs_average', active_event=active_event)
+    rate = cohort_matrix(df, granularity, 'rate', active_event=active_event)
+    ages = [c for c in dev.columns if c != 'Users']
+    index_labels = list(dev.index)
+
+    # --- Horizontal: per-cohort average deviation from its same-age peers ---
+    row_dev = dev[ages].mean(axis=1)
+    global_mean = row_dev.mean()
+    sizes = dev['Users']
+    size_median = sizes.median()
+    horizontal = []
+    for label in index_labels:
+        mag = row_dev[label] - global_mean
+        if np.isnan(mag):
+            continue
+        size = sizes[label]
+        small = not np.isnan(size) and size <= size_median
+        if mag > 0:
+            hint = ('horizontal — this cohort retains above its peers'
+                    + (' despite a small size (low volume, high quality)'
+                       if small else ''))
+        else:
+            hint = 'horizontal — this cohort retains below its peers'
+        horizontal.append({
+            'where': label,
+            'magnitude': round(float(mag), 1),
+            'size': None if np.isnan(size) else int(size),
+            'lens_hint': hint,
+        })
+    horizontal.sort(key=lambda d: abs(d['magnitude']), reverse=True)
+
+    # --- Diagonal: group deviations by calendar period (row pos + age) ---
+    buckets = {}
+    vals = dev[ages].values
+    for i in range(vals.shape[0]):
+        for j, age in enumerate(ages):
+            v = vals[i, j]
+            if not np.isnan(v):
+                buckets.setdefault(i + age, []).append(v)
+    diagonal = []
+    for cal_key, vlist in buckets.items():
+        if len(vlist) < _MIN_DIAGONAL_COHORTS:
+            continue
+        mean_dev = float(np.mean(vlist))
+        where = index_labels[min(cal_key, len(index_labels) - 1)]
+        diagonal.append({
+            'where': where,
+            'magnitude': round(mean_dev, 1),
+            'n_cohorts': len(vlist),
+            'lens_hint': ('diagonal — many cohorts move together here: a '
+                          'simultaneous, all-cohort event (launch, bug, outage)'),
+        })
+    diagonal.sort(key=lambda d: abs(d['magnitude']), reverse=True)
+
+    # --- Vertical: tenure ages whose drop exceeds the smooth decay ---
+    avg_by_age = rate[ages].mean(axis=0)
+    drops = {}
+    prev = None
+    for age in ages:
+        cur = avg_by_age[age]
+        if prev is not None and not np.isnan(cur) and not np.isnan(prev):
+            drops[age] = prev - cur
+        prev = cur
+    baseline = float(np.median(list(drops.values()))) if drops else 0.0
+    vertical = []
+    for age, drop in drops.items():
+        vertical.append({
+            'where': f'age {age}',
+            'magnitude': round(float(drop), 1),
+            'excess': round(float(drop - baseline), 1),
+            'n_cohorts': int(rate[age].notna().sum()),
+            'lens_hint': ('vertical — an unusually steep drop at this tenure: a '
+                          'survival moment (trial end, renewal)'),
+        })
+    vertical.sort(key=lambda d: d['excess'], reverse=True)
+
+    return {
+        'horizontal': horizontal[:top],
+        'diagonal': diagonal[:top],
+        'vertical': vertical[:top],
+    }
+
+
 # ---------------------------------------------------------------------------
 # Public API — Retention Curve
 # ---------------------------------------------------------------------------

@@ -41,7 +41,7 @@ from datadiner.io import load_events
 from datadiner.retention import (
     retention_rate_heatmap, retention_counts_heatmap,
     churn_rate_heatmap, churn_counts_heatmap, vs_average_heatmap,
-    retention_curve, usage_frequency, lifecycle_states,
+    retention_curve, usage_frequency, lifecycle_states, cohort_matrix,
 )
 
 df = load_events("datasets/<name>/<file>.csv")   # e.g. datasets/notion/notion_causal_events.csv
@@ -104,6 +104,43 @@ res = lifecycle_states(df, segment_by=['segment','platform'])  # list of (label,
 and `lifecycle_states` render **one figure per group** and return a **list** instead
 of a single `fig, ax`. Combinations multiply fast — past ~30 groups it warns; steer the
 user to a couple of columns or specific values.
+
+## Saving a run (output folder)
+
+Charts are inline by default — **only save when the user asks** for results to keep
+or share. A run is bundled into `output/<dataset>/<YYYY-MM-DD-HHMM>/`: a `report.md`
+(provenance + one section per view with the read, the embedded chart, and a link to
+the data) alongside `charts/` PNGs and `data/` CSVs. The folder is git-ignored.
+
+**Incremental — during the guided exercise** (recommended, so the report carries the
+same reads you gave the user, one section per step):
+
+```python
+from datadiner.report import AnalysisReport
+
+report = AnalysisReport("notion", df=df, source="datasets/notion/notion_causal_events.csv")
+fig, ax, avg = usage_frequency(df)
+report.section("Usage frequency", fig=fig, data=avg, note="<your plain-English read>")
+fig, ax = retention_rate_heatmap(df, active_event='page_created')
+report.section("Cohort retention rate", fig=fig,
+               data=cohort_matrix(df, kind='rate', active_event='page_created'),
+               note="<your read>")
+report.save()   # writes report.md, returns the run dir
+```
+
+`section()` takes whatever a view returns — a single `fig`, a `(fig1, fig2)` pair, a
+`{name: fig}` dict, or the `list[(label, …)]` a segmented view returns — plus a
+DataFrame (or per-segment list) for the CSV. Use `cohort_matrix(df, kind=…)` to get a
+heatmap's numbers as data (the heatmaps return only `fig, ax`).
+
+**One-shot** — build the whole Phase-1 overall folder in workflow order:
+
+```python
+from datadiner.report import overall_report
+overall_report(df, dataset="notion",
+               source="datasets/notion/notion_causal_events.csv",
+               active_event="page_created")
+```
 
 ## Core action — what counts as "active"
 

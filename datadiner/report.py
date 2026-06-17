@@ -1,0 +1,335 @@
+"""
+DataDiner — Report module
+=========================
+Bundle an analysis run into a self-contained, shareable output folder:
+
+    output/<dataset>/<YYYY-MM-DD-HHMM>/
+        report.md     title + provenance, one section per view (read + chart + data)
+        charts/       PNGs (one per figure; segmented views -> one per group)
+        data/         CSVs (cohort matrices, lifecycle states, usage-per-user)
+
+This is the *packaging* layer — it never reimplements analysis. It saves the
+figures and DataFrames the `retention` views already return, plus the cohort
+matrices from `retention.cohort_matrix`, and accumulates a Markdown report whose
+charts are embedded with **relative** paths so it renders on GitHub and anywhere
+the folder is opened.
+
+Two entry points:
+
+- ``AnalysisReport`` — build a run incrementally (one ``.section()`` per view),
+  e.g. while driving the interactive retention exercise, then ``.save()``.
+- ``overall_report(df, dataset, ...)`` — one shot: run the whole Phase-1 overall
+  sequence and write the folder.
+
+Usage:
+    from datadiner.io import load_events
+    from datadiner.report import overall_report
+
+    df = load_events("datasets/notion/notion_causal_events.csv")
+    run = overall_report(df, dataset="notion",
+                         source="datasets/notion/notion_causal_events.csv",
+                         active_event="page_created")
+    print(run)   # -> output/notion/<timestamp>/
+"""
+
+import re
+from datetime import datetime
+from pathlib import Path
+
+import pandas as pd
+from matplotlib.figure import Figure
+
+from .io import summarize_events
+from .retention import (
+    _safe_label,
+    cohort_matrix,
+    usage_frequency,
+    retention_curve,
+    lifecycle_states,
+    retention_rate_heatmap,
+    churn_rate_heatmap,
+    vs_average_heatmap,
+)
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers — normalizing the varied shapes views return
+# ---------------------------------------------------------------------------
+
+def _slugify(text):
+    """Filesystem/anchor-safe slug from a section title, e.g. 'Churn rate' -> 'churn_rate'."""
+    slug = re.sub(r"[^\w]+", "_", text.strip().lower())
+    return slug.strip("_") or "section"
+
+
+def _figures_in(obj):
+    """Recursively yield Figure objects out of a view-return fragment."""
+    if isinstance(obj, Figure):
+        yield obj
+    elif isinstance(obj, (tuple, list)):
+        for item in obj:
+            yield from _figures_in(item)
+
+
+def _normalize_figs(fig):
+    """Normalize a `fig` argument to a list of (label, Figure).
+
+    Handles every shape the retention views return:
+      - None                          -> []
+      - a single Figure               -> [(None, fig)]
+      - (fig, ax)                      -> [(None, fig)]
+      - {'bars': fig1, ...}           -> [('bars', fig1), ...]   (named figures)
+      - (fig1, fig2)                  -> [('1', fig1), ('2', fig2)]
+      - [(label, ...), ...]           -> one (label[, idx], fig) per group
+                                          (segmented heatmaps / lifecycle)
+    """
+    if fig is None:
+        return []
+    if isinstance(fig, Figure):
+        return [(None, fig)]
+    if isinstance(fig, dict):
+        return [(name, f) for name, f in fig.items() if isinstance(f, Figure)]
+    # Segmented return: list of (label, ...) tuples keyed by a string label.
+    if (isinstance(fig, list) and fig and isinstance(fig[0], tuple)
+            and isinstance(fig[0][0], str)):
+        out = []
+        for item in fig:
+            label, rest = item[0], item[1:]
+            figs = list(_figures_in(rest))
+            for i, f in enumerate(figs):
+                sub = label if len(figs) == 1 else f"{label}_{i + 1}"
+                out.append((sub, f))
+        return out
+    # A bare tuple/list of figures (and maybe axes): (fig, ax) or (fig1, fig2).
+    figs = list(_figures_in(fig))
+    if len(figs) == 1:
+        return [(None, figs[0])]
+    return [(str(i + 1), f) for i, f in enumerate(figs)]
+
+
+def _normalize_data(data):
+    """Normalize a `data` argument to a list of (name, DataFrame).
+
+    Handles: None; a DataFrame; {name: DataFrame}; or a list of (label, DataFrame).
+    """
+    if data is None:
+        return []
+    if isinstance(data, pd.DataFrame):
+        return [(None, data)]
+    if isinstance(data, dict):
+        return [(name, d) for name, d in data.items()
+                if isinstance(d, pd.DataFrame)]
+    out = []
+    for item in data:
+        if isinstance(item, tuple) and len(item) >= 2 \
+                and isinstance(item[1], pd.DataFrame):
+            out.append((item[0], item[1]))
+    return out
+
+
+def _keep_index(df):
+    """Keep a DataFrame's index in the CSV only when it carries meaning."""
+    return not isinstance(df.index, pd.RangeIndex)
+
+
+def _df_preview_md(df, max_rows=5, max_cols=8):
+    """Render the head of a DataFrame as a GitHub-flavored Markdown table."""
+    show_index = _keep_index(df)
+    truncated_cols = df.shape[1] > max_cols
+    view = df.iloc[:max_rows, :max_cols]
+
+    headers = ([df.index.name or ""] if show_index else []) + \
+        [str(c) for c in view.columns]
+    if truncated_cols:
+        headers.append("…")
+
+    def _fmt(v):
+        if isinstance(v, float):
+            return f"{v:.2f}"
+        return str(v)
+
+    lines = ["| " + " | ".join(headers) + " |",
+             "| " + " | ".join("---" for _ in headers) + " |"]
+    for idx, row in view.iterrows():
+        cells = ([str(idx)] if show_index else []) + [_fmt(v) for v in row]
+        if truncated_cols:
+            cells.append("…")
+        lines.append("| " + " | ".join(cells) + " |")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Public API — incremental report builder
+# ---------------------------------------------------------------------------
+
+class AnalysisReport:
+    """A single analysis run, written to ``output/<dataset>/<run_id>/``.
+
+    Build it up one view at a time with :meth:`section`, then :meth:`save`.
+    Figures are saved from the objects the views return, so it works whether or
+    not the view was called with ``save=``.
+    """
+
+    def __init__(self, dataset, df=None, source=None, base_dir="output",
+                 run_id=None):
+        self.dataset = dataset
+        self.run_id = run_id or datetime.now().strftime("%Y-%m-%d-%H%M")
+        self.dir = Path(base_dir) / dataset / self.run_id
+        self.charts_dir = self.dir / "charts"
+        self.data_dir = self.dir / "data"
+        for d in (self.charts_dir, self.data_dir):
+            d.mkdir(parents=True, exist_ok=True)
+
+        self._sections = []
+        self._header = self._build_header(df, source)
+
+    def _build_header(self, df, source):
+        lines = [
+            f"# Retention analysis — {self.dataset}",
+            "",
+            f"- **Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+            f"- **Run:** `{self.run_id}`",
+        ]
+        if source:
+            lines.append(f"- **Source:** `{source}`")
+        if df is not None:
+            s = summarize_events(df)
+            lines.append(
+                f"- **Events:** {s['rows']:,} rows · {s['users']:,} users · "
+                f"{s['start']:%Y-%m-%d} → {s['end']:%Y-%m-%d}"
+            )
+        lines.append("")
+        return "\n".join(lines)
+
+    def section(self, title, fig=None, data=None, note="", slug=None):
+        """Add one view to the report: its read, chart(s), and data table(s).
+
+        Parameters
+        ----------
+        title : str          section heading.
+        fig : optional        a Figure, (fig, ax), (fig1, fig2), a {name: Figure}
+                              dict, or the list[(label, ...)] a segmented view
+                              returns. Each figure is saved as a PNG.
+        data : optional       a DataFrame, {name: DataFrame}, or list of
+                              (label, DataFrame); each is written as a CSV.
+        note : str            the plain-English read ("what it says / why").
+        slug : optional str   filename stem; defaults to a slug of `title`.
+        """
+        slug = slug or _slugify(title)
+        figs = _normalize_figs(fig)
+        tables = _normalize_data(data)
+
+        chart_md = []
+        for label, figure in figs:
+            stem = slug if label is None else f"{slug}_{_safe_label(str(label))}"
+            rel = f"charts/{stem}.png"
+            figure.savefig(self.dir / rel, dpi=150, bbox_inches="tight")
+            caption = f" — {label}" if label is not None else ""
+            chart_md.append(f"![{title}{caption}]({rel})")
+
+        data_md = []
+        for name, df in tables:
+            stem = slug if name is None else f"{slug}_{_safe_label(str(name))}"
+            rel = f"data/{stem}.csv"
+            df.to_csv(self.dir / rel, index=_keep_index(df))
+            data_md.append((rel, df))
+
+        parts = [f"## {title}", ""]
+        if note:
+            parts += [note.strip(), ""]
+        parts += chart_md
+        if chart_md:
+            parts.append("")
+        for rel, df in data_md:
+            parts.append(f"**Data:** [`{Path(rel).name}`]({rel})")
+            parts.append("")
+            parts.append(_df_preview_md(df))
+            parts.append("")
+        self._sections.append("\n".join(parts).rstrip() + "\n")
+        return self
+
+    def save(self):
+        """Write ``report.md`` and return the run directory Path."""
+        body = self._header + "\n" + "\n".join(self._sections)
+        report_path = self.dir / "report.md"
+        report_path.write_text(body.rstrip() + "\n")
+        print(f"Report written to {self.dir}")
+        return self.dir
+
+
+# ---------------------------------------------------------------------------
+# Public API — one-shot overall report
+# ---------------------------------------------------------------------------
+
+def overall_report(df, dataset, source=None, active_event=None,
+                   granularity="weekly", base_dir="output"):
+    """Run the Phase-1 overall sequence and write a full output folder.
+
+    Mirrors the default workflow order: usage frequency → retention curve →
+    lifecycle → retention-rate / churn-rate / vs-average cohort heatmaps, all
+    un-segmented. Returns the run directory Path.
+
+    `active_event` (e.g. the brief's core_action) is applied to every view that
+    supports it, so retention means "did the core action".
+    """
+    report = AnalysisReport(dataset, df=df, source=source, base_dir=base_dir)
+
+    fig, _ax, avg_days = usage_frequency(df)
+    report.section(
+        "Usage frequency",
+        fig=fig, data=avg_days,
+        note="Average active days per month per user — the engagement cadence "
+             "that frames what 'active' should mean (daily vs weekly vs monthly).",
+    )
+
+    fig, _ax = retention_curve(df, active_event=active_event)
+    report.section(
+        "Retention curve",
+        fig=fig,
+        note="The overall decay shape: how fast the average cohort loses users "
+             "over the weeks since first activity.",
+    )
+
+    states_df, (fig_bars, fig_qr) = lifecycle_states(df, active_event=active_event)
+    report.section(
+        "Lifecycle states",
+        fig={"bars": fig_bars, "quick_ratio": fig_qr},
+        data=states_df,
+        note="Weekly New / Retained / Resurrected / At-Risk / Churned, and the "
+             "Quick Ratio = (New + Resurrected) / Churned (>1 growing net, <1 shrinking).",
+    )
+
+    fig, _ax = retention_rate_heatmap(df, granularity=granularity,
+                                      active_event=active_event)
+    report.section(
+        "Cohort retention rate",
+        fig=fig,
+        data=cohort_matrix(df, granularity=granularity, kind="rate",
+                           active_event=active_event),
+        note="Each cohort's % still active by age. Color is column-normalized "
+             "(good *for that age*); read the grey Users column before trusting a rate.",
+    )
+
+    fig, _ax = churn_rate_heatmap(df, granularity=granularity,
+                                  active_event=active_event)
+    report.section(
+        "Cohort churn rate",
+        fig=fig,
+        data=cohort_matrix(df, granularity=granularity, kind="churn_rate",
+                           active_event=active_event),
+        note="Period-over-period change in retention (pp). A sharp diagonal is the "
+             "signature of a calendar-period shock — worth investigating, not a proven cause.",
+    )
+
+    fig, _ax = vs_average_heatmap(df, granularity=granularity,
+                                  active_event=active_event)
+    report.section(
+        "Cohort vs average",
+        fig=fig,
+        data=cohort_matrix(df, granularity=granularity, kind="vs_average",
+                           active_event=active_event),
+        note="Deviation from the average retention for each age: positive = this "
+             "cohort beat its peers, negative = lagged. Best for spotting which cohort broke.",
+    )
+
+    return report.save()

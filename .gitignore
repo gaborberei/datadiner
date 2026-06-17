@@ -1,6 +1,9 @@
 .DS_Store
 *.csv
 
+# Generated analysis runs (charts + CSVs + report.md). Keep a run by hand if needed.
+output/
+
 # Answer keys / spoilers — never publish these (briefs are tracked, answers are not)
 ground_truth*.yaml
 ground_truth*.csv

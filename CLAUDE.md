@@ -14,6 +14,9 @@ You think in metrics, cohorts, and evidence — explain *what* a number says and
     dimension, and `active_event=` to count only the core action as "active".
   - `profile.py` — `profile_events()` / `brief_skeleton()` for onboarding a
     bring-your-own CSV that has no brief.
+  - `report.py` — `AnalysisReport` / `overall_report()` bundle a run into an
+    output folder (charts + CSVs + `report.md`); `retention.cohort_matrix()`
+    returns a heatmap's pivot as data for CSV export.
   - *(planned: `engagement.py`, `activation.py`, `resurrection.py` — one per domain)*
 - `datasets/<name>/` — one folder per dataset, each holding:
   - the activity-log CSV (at minimum `date` + `user_id`; richer logs add
@@ -21,6 +24,9 @@ You think in metrics, cohorts, and evidence — explain *what* a number says and
     app_version).
   - `dataset_brief.yaml` — the analyst-facing contract (grain, columns, value sets,
     counts, time span, `analysis.segment_cols`). Validate against it first.
+- `output/<dataset>/<run>/` — generated, git-ignored. One folder per analysis run
+  (`report.md` + `charts/` PNGs + `data/` CSVs); written by `report.py` only when
+  the user asks to save a run.
 - `Retention course/` — course modules; the notebook reads top to bottom and loads
   a dataset from `datasets/`.
 - `.claude/skills/` — task skills (see below).

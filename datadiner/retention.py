@@ -435,22 +435,79 @@ def vs_average_heatmap(df, granularity='weekly', segment_by=None, active_event=N
     -------
     fig, ax — or, when segment_by is set, a list of (label, fig, ax)
     """
-    def _deviation(cohort_data, sizes, pcol, maxp, fmt):
-        pivot = _build_pivot(cohort_data, sizes, pcol, maxp, fmt, 'retention_pct')
-        users_col = pivot['Users']
-        data_cols = pivot.drop(columns='Users')
-        deviation = data_cols.subtract(data_cols.mean(axis=0), axis=1)
-        deviation.insert(0, 'Users', users_col)
-        return deviation
-
     def _title(g):
         tail = f' per {_period_label(g)[:-1]}' if g in ('week', 'weekly') else ''
         return f'{_period_prefix(g)}Cohort vs Average — Deviation from Average Retention{tail}'
 
     return _cohort_heatmap(
         df, granularity, segment_by, active_event, save,
-        transform=_deviation, title_fn=_title, annotation_fmt='signed_pp',
+        transform=_vs_average_pivot, title_fn=_title, annotation_fmt='signed_pp',
     )
+
+
+# ---------------------------------------------------------------------------
+# Public API — Cohort matrix (data only, for export)
+# ---------------------------------------------------------------------------
+
+def _vs_average_pivot(cohort_data, sizes, pcol, maxp, fmt):
+    """Deviation-from-average pivot (same transform as vs_average_heatmap)."""
+    pivot = _build_pivot(cohort_data, sizes, pcol, maxp, fmt, 'retention_pct')
+    users_col = pivot['Users']
+    data_cols = pivot.drop(columns='Users')
+    deviation = data_cols.subtract(data_cols.mean(axis=0), axis=1)
+    deviation.insert(0, 'Users', users_col)
+    return deviation
+
+
+# Maps a `kind` to the transform that builds its pivot. These mirror exactly the
+# transforms the five heatmap functions use, so the CSV matches the chart.
+_MATRIX_TRANSFORMS = {
+    'counts': lambda cd, s, p, m, f: _build_pivot(cd, s, p, m, f, 'active_users'),
+    'rate': lambda cd, s, p, m, f: _build_pivot(cd, s, p, m, f, 'retention_pct'),
+    'churn_counts': lambda cd, s, p, m, f: _diff_pivot(
+        _build_pivot(cd, s, p, m, f, 'active_users')),
+    'churn_rate': lambda cd, s, p, m, f: _diff_pivot(
+        _build_pivot(cd, s, p, m, f, 'retention_pct')),
+    'vs_average': _vs_average_pivot,
+}
+
+
+def cohort_matrix(df, granularity='weekly', kind='rate', segment_by=None,
+                  active_event=None):
+    """Return the cohort pivot table behind a heatmap, as data (no chart).
+
+    The five `*_heatmap` views return only `fig, ax`; use this to get the same
+    numbers as a DataFrame for export or inspection. The pivot has the cohort
+    period as the index, a leading grey-column-equivalent `Users` (cohort size),
+    and one column per period-since-signup.
+
+    Parameters
+    ----------
+    df : DataFrame with 'date' and 'user_id' columns
+    granularity : 'weekly' or 'monthly'
+    kind : 'rate' | 'counts' | 'churn_rate' | 'churn_counts' | 'vs_average'
+        Which heatmap's matrix to build (matches the same-named view).
+    segment_by : optional column or list of columns to split on
+    active_event : optional event_type to count as 'active'
+
+    Returns
+    -------
+    DataFrame — or, when segment_by is set, a list of (label, DataFrame).
+    """
+    if kind not in _MATRIX_TRANSFORMS:
+        raise ValueError(
+            f"kind must be one of {sorted(_MATRIX_TRANSFORMS)}, got {kind!r}"
+        )
+    transform = _MATRIX_TRANSFORMS[kind]
+    df = _filter_active(df, active_event)
+    results = []
+    for label, sub in _segment_values(df, segment_by):
+        cohort_data, sizes, pcol, maxp, fmt = _prepare_cohorts(sub, granularity)
+        pivot = transform(cohort_data, sizes, pcol, maxp, fmt)
+        if label is None:
+            return pivot
+        results.append((label, pivot))
+    return results
 
 
 # ---------------------------------------------------------------------------

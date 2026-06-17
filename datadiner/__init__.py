@@ -5,6 +5,7 @@ parent). Submodules:
 
     retention   cohort heatmaps, retention curve, usage frequency, lifecycle states
     io          shared event-log loading and summaries
+    report      bundle a run into output/<dataset>/<run>/ (charts + CSVs + report.md)
 
 Planned: engagement, activation, resurrection (add a submodule per domain).
 
@@ -27,11 +28,15 @@ from .retention import (
     retention_curve,
     usage_frequency,
     lifecycle_states,
+    cohort_matrix,
 )
+from . import report  # noqa: F401
+from .report import AnalysisReport, overall_report
 
 __all__ = [
     "io",
     "profile",
+    "report",
     "profile_events",
     "brief_skeleton",
     "retention_counts_heatmap",
@@ -42,4 +47,7 @@ __all__ = [
     "retention_curve",
     "usage_frequency",
     "lifecycle_states",
+    "cohort_matrix",
+    "AnalysisReport",
+    "overall_report",
 ]

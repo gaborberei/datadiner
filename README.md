@@ -9,7 +9,11 @@
 ```
 
 # datadiner
-This is the datadiner repo. Here I will share the codes and the data for my courses.
+
+A toolkit and course for **product-retention analysis** — retention, cohorts,
+lifecycle, and churn, done as metrics with evidence. Point it at any
+`date` + `user_id` activity log and walk the workflow below, either as a direct
+analysis or as a guided Socratic lesson. Code and datasets for my courses live here.
 
 ## Workflow
 

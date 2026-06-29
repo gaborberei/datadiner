@@ -19,8 +19,8 @@ You think in metrics, cohorts, and evidence — explain *what* a number says and
     returns a heatmap's pivot as data for CSV export.
   - *(planned: `engagement.py`, `activation.py`, `resurrection.py` — one per domain)*
 - `datasets/<name>/` — one folder per dataset, each holding:
-  - the activity-log CSV (at minimum `date` + `user_id`; richer logs add
-    `event_type` and segment columns like segment / channel / country / platform /
+  - the activity-log CSV (required: `date` + `user_id` + `event_type`; richer logs
+    add segment columns like segment / channel / country / platform /
     app_version).
   - `dataset_brief.yaml` — the analyst-facing contract (grain, columns, value sets,
     counts, time span, `analysis.segment_cols`). Validate against it first.

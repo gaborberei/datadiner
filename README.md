@@ -12,16 +12,16 @@
 
 A toolkit and course for **product-retention analysis** — retention, cohorts,
 lifecycle, and churn, done as metrics with evidence. Point it at any
-`date` + `user_id` activity log and walk the workflow below, either as a direct
+`date` + `user_id` + `event_type` activity log and walk the workflow below, either as a direct
 analysis or as a guided Socratic lesson. Code and datasets for my courses live here.
 
 ## Workflow
 
 ```
-                          ┌─────────────────────────────┐
-                          │   Point at an activity-log   │
-                          │  CSV (date + user_id, …)     │
-                          └──────────────┬──────────────┘
+                      ┌─────────────────────────────────────┐
+                      │      Point at an activity-log       │
+                      │  CSV (date + user_id + event_type)  │
+                      └──────────────────┬──────────────────┘
                                          │
                             ┌────────────┴────────────┐
                             │  Does a dataset_brief    │

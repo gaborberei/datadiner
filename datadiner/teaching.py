@@ -7,18 +7,21 @@ showing the answer key to the learner.
 
 Two artifacts feed the rubric, both dataset-agnostic:
 
-- ``<dir>/ground_truth_config.yaml`` — the hidden answer key (git-ignored as a
-  spoiler). Holds the real ``shocks`` and the per-dimension / per-segment retention
-  differences. **Never shown to the learner.** May be absent in a published checkout
-  — then the tutor runs in coaching mode (facilitation, no grading).
+- ``<dir>/solutions.yaml`` — the hidden answer key (git-ignored as a spoiler;
+  ``ground_truth_config.yaml`` is accepted as a legacy fallback). Holds the real
+  ``shocks`` and the per-dimension / per-segment retention differences. **Never shown
+  to the learner.** May be absent in a published checkout — then the tutor runs in
+  coaching mode (facilitation, no grading).
 - ``<dir>/dataset_brief.yaml`` — the analyst-facing contract. Holds the assignment
   (``task``), graduated ``hints``, ``known_context``, and the exact
   ``retention_metric`` / ``analysis`` definitions. Safe to share with the learner.
 
 ``load_rubric`` tolerates either file (or keys within them) being missing, and
-normalizes the two ground-truth schemas (notion ships ``shocks`` +
+normalizes the known ground-truth schemas: notion ships ``shocks`` +
 ``dimensions.*.retention_multiplier``; chess ships neither but has
-``dimensions`` / ``segments``).
+``dimensions`` / ``segments``; the duolingo ``solutions.yaml`` nests its content under
+``experiments`` and ``hidden_structure`` (``time_series.spikes``,
+``segments.*.retention_mult``, ``channel_retention_multipliers``).
 
 Usage:
     from datadiner.teaching import load_rubric
@@ -28,6 +31,10 @@ Usage:
     else:
         ...   # coaching mode: facilitation only
 """
+
+#: Answer-key filenames probed in order; the first that exists wins. ``solutions.yaml``
+#: is the current convention; ``ground_truth_config.yaml`` is kept for legacy datasets.
+ANSWER_KEY_NAMES = ("solutions.yaml", "ground_truth_config.yaml")
 
 from pathlib import Path
 
@@ -45,9 +52,11 @@ def _load_yaml(path):
 def _segment_expectations(ground_truth):
     """Pull the comparable retention differences out of a ground-truth config.
 
-    Tolerant of both schemas: a dimension contributes when it declares a
-    ``retention_multiplier`` map (notion); ``segments`` contribute their
-    ``retention`` block (plateau / decay) when present. Returns {} if neither.
+    Tolerant of every known schema: a dimension contributes when it declares a
+    ``retention_multiplier`` map (notion); top-level ``segments`` contribute their
+    ``retention`` block (plateau / decay) when present (chess); and the duolingo
+    ``solutions.yaml`` nests per-segment ``retention_mult`` and per-channel
+    multipliers under ``hidden_structure``. Returns {} when none apply.
     """
     out = {}
     for dim, spec in (ground_truth.get("dimensions") or {}).items():
@@ -61,6 +70,18 @@ def _segment_expectations(ground_truth):
     }
     if seg_ret:
         out["segments"] = seg_ret
+
+    hidden = ground_truth.get("hidden_structure") or {}
+    seg_mult = {
+        name: spec["retention_mult"]
+        for name, spec in (hidden.get("segments") or {}).items()
+        if isinstance(spec, dict) and "retention_mult" in spec
+    }
+    if seg_mult:
+        out["segments"] = seg_mult
+    channel_mult = hidden.get("channel_retention_multipliers")
+    if channel_mult:
+        out["channel"] = channel_mult
     return out
 
 
@@ -71,36 +92,44 @@ def load_rubric(dataset_dir):
     ----------
     dataset_dir : str | Path
         A ``datasets/<name>/`` directory holding a ``dataset_brief.yaml`` and,
-        when available, a ``ground_truth_config.yaml``.
+        when available, a ``solutions.yaml`` (or legacy
+        ``ground_truth_config.yaml``).
 
     Returns
     -------
     dict with keys:
-        shocks               list of ground-truth shocks (``[]`` when none/absent).
+        shocks               list of ground-truth shocks (``[]`` when none/absent);
+                             falls back to ``hidden_structure.time_series.spikes``.
         segment_expectations comparable retention differences by dimension/segment.
+        experiments          ground-truth A/B readouts (``[]`` when none/absent).
         metric               brief ``retention_metric`` (definitions to confirm).
         analysis             brief ``analysis`` block (core_action, segment_cols).
         task                 the assignment to frame the exercise.
         hints                graduated hints to dole out when the learner is stuck.
         known_context        shareable background context.
-        has_answer_key       True only when ``ground_truth_config.yaml`` exists —
-                             selects graded vs coaching mode.
+        has_answer_key       True only when an answer-key file (``solutions.yaml`` or
+                             legacy ``ground_truth_config.yaml``) exists — selects
+                             graded vs coaching mode.
 
     Never raises on missing files or keys: a directory with neither file yields an
     empty rubric with ``has_answer_key=False`` (pure coaching mode).
     """
     d = Path(dataset_dir)
-    gt_path = d / "ground_truth_config.yaml"
-    ground_truth = _load_yaml(gt_path)
+    gt_path = next((d / name for name in ANSWER_KEY_NAMES if (d / name).exists()), None)
+    ground_truth = _load_yaml(gt_path) if gt_path else {}
     brief = _load_yaml(d / "dataset_brief.yaml")
 
+    spikes = (ground_truth.get("hidden_structure") or {}).get("time_series") or {}
+    shocks = ground_truth.get("shocks") or spikes.get("spikes") or []
+
     return {
-        "shocks": ground_truth.get("shocks") or [],
+        "shocks": shocks,
         "segment_expectations": _segment_expectations(ground_truth),
+        "experiments": ground_truth.get("experiments") or [],
         "metric": brief.get("retention_metric"),
         "analysis": brief.get("analysis"),
         "task": brief.get("task"),
         "hints": brief.get("hints"),
         "known_context": brief.get("known_context"),
-        "has_answer_key": gt_path.exists(),
+        "has_answer_key": gt_path is not None,
     }

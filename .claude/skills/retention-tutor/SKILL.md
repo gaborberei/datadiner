@@ -56,7 +56,7 @@ conclude a cause.** Coaching mode is the more common real-world use — it teach
 
 | Source | How you use it | Show the learner? |
 |---|---|---|
-| `ground_truth_config.yaml` via `rubric["shocks"]` / `["segment_expectations"]` | grade discoveries, aim hints | **Never** — not the values, not the count |
+| `solutions.yaml` via `rubric["shocks"]` / `["segment_expectations"]` / `["experiments"]` | grade discoveries, aim hints | **Never** — not the values, not the count |
 | live `cohort_patterns(df)` | aim grounded questions (both modes) | as **questions**, never as answers |
 | `rubric["task"]` | the assignment / framing | Yes |
 | `rubric["hints"]`, `["known_context"]` | graduated hints when stuck | Yes, one at a time |

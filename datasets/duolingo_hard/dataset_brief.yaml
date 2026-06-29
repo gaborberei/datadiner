@@ -1,0 +1,171 @@
+brief_version: 1
+answer_key: "solutions.yaml \u2014 do NOT open before your analysis is written down"
+schema:
+  granularity: daily
+  time_column: date
+  count_column: event_count
+  primary_key:
+  - date
+  - user_id
+  - event_type
+  dtypes:
+    exp_smart_notifications: str
+analysis:
+  core_action: lesson_completed
+  natural_frequency: daily
+  segment_cols:
+  - acquisition_channel
+  - country
+  - platform
+  - course
+  variant_columns:
+  - exp_smart_notifications
+data_quality:
+  sparsity: active_periods_only
+  event_count_min: 1
+dataset:
+  file: duolingo_hard_analyst_daily.csv
+  product: A Duolingo-like language-learning app whose core loop is the DAILY streak.
+  description: "One calendar year of DAILY per-user-per-event-type counts for a growing\
+    \ language app. Users still arrive in weekly signup cohorts but are then active\
+    \ (or not) day by day. One A/B experiment ran (variant column present). The product's\
+    \ loop is the daily streak \u2014 habit formation, lapses, freezes, and reminder\
+    \ notifications. Find the lifecycle dynamics and read out the test.\n"
+  rows: 726881
+  users: 8908
+task:
+- 'Recover the habit/return dynamics: does a longer current streak predict a higher
+  next-day return probability? Does breaking a streak predict churn? Quantify the
+  habit curve from the daily active calendar.
+
+  '
+- 'Read out the A/B experiment: recover its window, measure the lift on the metric
+  it plausibly targeted (reactivation / activity) with a CI, run an SRM check, and
+  give a ship/no-ship call.
+
+  '
+- 'Activation & retention: does early behaviour (first lessons, first 7-day streak)
+  predict week-N retention? Summarize growth, DAU/WAU, and retention by cohort and
+  by course/channel.
+
+  '
+grain: "One row per (date, user_id, event_type) with event_count. A user appears on\
+  \ a day only if they did something that day; absence = an idle day. First observed\
+  \ date = signup day. Reconstruct each user's dense daily active calendar (zero-fill\
+  \ idle days) before computing streaks or rolling-window metrics \u2014 gaps are\
+  \ idle days, not missing data."
+retention_metric:
+  activity_definition: A user is ACTIVE on a day if they have a core-action row that
+    day. notification_*/streak_* rows describe the day; the core action is the substantive
+    activity.
+  cohort_definition: Signup cohort = first active day (min date), optionally rolled
+    up to the weekly signup cohort. First active day = signup day.
+  retention_rate: 'Classic N-day (or N-week) retention: fraction of a cohort active
+    exactly N days/weeks after signup; each (cohort, age) cell computed independently.'
+  churn_and_resurrection: Churn = a run of idle days; users frequently return (lapse/resurrection
+    is central), so model returns explicitly and compute cells independently.
+  weekly_active_users: DAU = distinct users active on a day; WAU = distinct users
+    active in a calendar week. The daily/weekly ratio is itself a habit signal.
+time_coverage:
+  start_week: '2024-01-01'
+  end_week: '2024-12-29'
+columns:
+  date:
+    type: date
+    description: Calendar day (YYYY-MM-DD).
+    values: 364 dates from 2024-01-01 to 2024-12-29
+  user_id:
+    type: string
+    description: Stable per-user identifier.
+    values: 8,908 distinct users
+  event_type:
+    type: string
+    description: What the user did; one row per (user, period, type) with event_count.
+    values:
+      lesson_completed: A lesson was finished. The core action; count = lessons that
+        day.
+      notification_opened: The learner opened a reminder notification that day.
+      notification_sent: A reminder notification was sent to the learner that day.
+      streak_freeze_used: A streak freeze was auto-spent to save a streak across a
+        missed day.
+      streak_lost: A streak (of meaningful length) was broken that day.
+      streak_milestone: The learner's streak reached a milestone length that day.
+  event_count:
+    type: int
+    description: Number of events of this type for this user in this period (>= 1).
+    values: 1 .. 100
+  acquisition_channel:
+    type: string
+    description: How the user was acquired (fixed at signup).
+    values:
+    - organic
+    - paid_search
+    - referral
+    - social
+  country:
+    type: string
+    description: User country (fixed at signup).
+    values:
+    - BR
+    - DE
+    - FR
+    - IN
+    - JP
+    - MX
+    - UK
+    - US
+  platform:
+    type: string
+    description: Primary platform (fixed at signup).
+    values:
+    - android
+    - ios
+    - web
+  course:
+    type: string
+    description: Course / track the user is on (fixed at signup).
+    values:
+    - english
+    - french
+    - german
+    - italian
+    - japanese
+    - spanish
+  exp_smart_notifications:
+    type: string
+    description: Assignment for the 'smart_notifications' A/B test. Blank = not enrolled.
+      Read the CSV with keep_default_na=False so blanks compare as "" not NaN.
+    values:
+    - ''
+    - control
+    - treatment
+known_context:
+  experiments:
+  - name: smart_notifications
+    variant_column: exp_smart_notifications
+    control_label: control
+    unenrolled_value: ''
+    assignment: 50/50 randomized; all users eligible.
+    note: "Window, target metric, and effect size are NOT given \u2014 recover them\
+      \ from the data."
+  beliefs:
+  - 'Lessons-per-active-day is right-skewed. Prefer medians / log scales and per-user
+    inference.
+
+    '
+  - 'Retention is weekly-ish even though the loop is daily: a learner who studies
+    a few times a week misses days constantly WITHOUT churning, so do not treat one
+    missed day as churn.
+
+    '
+hints:
+- Reconstruct each user's dense daily active calendar (zero-fill idle days) before
+  any streak or rolling metric.
+- 'For the habit curve, condition next-day return on current streak length; for churn,
+  condition on a streak break / length of idle gap.
+
+  '
+- "The experiment's variant column marks WHO is enrolled across all their days, not\
+  \ the window \u2014 recover the window from when the arms diverge. The likely target\
+  \ is reactivation; compare arms on active days/user, not just raw lesson volume.\n"
+- Cut retention by course and acquisition_channel; both carry real differences.

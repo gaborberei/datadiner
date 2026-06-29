@@ -55,7 +55,7 @@ or combination to drill into, then re-run with `segment_by=`. Use
   topics or `/retention-analysis`.
 - **retention-tutor** — the opt-in **Socratic** companion: teaches the same workflow
   by asking, not telling (show→ask→probe→reveal). **Graded mode** validates against a
-  hidden answer key (`ground_truth_config.yaml`, never shown) on course datasets;
+  hidden answer key (`solutions.yaml`, never shown) on course datasets;
   **coaching mode** facilitates on bring-your-own data with no key, grounded by
   `cohort_patterns`. Reuses the `datadiner` views and retention-analysis's reading
   guide. Triggers on "teach/quiz/walk me through" or `/retention-tutor`.

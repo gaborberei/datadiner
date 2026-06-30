@@ -43,6 +43,7 @@ from matplotlib.figure import Figure
 
 from .io import summarize_events
 from .retention import (
+    _announce_figure,
     _safe_label,
     no_figure_display,
     cohort_matrix,
@@ -258,6 +259,7 @@ class AnalysisReport:
             stem = slug if label is None else f"{slug}_{_safe_label(str(label))}"
             rel = f"charts/{stem}.png"
             figure.savefig(self.dir / rel, dpi=150, bbox_inches="tight")
+            _announce_figure(self.dir / rel)
             # Release the figure once it's on disk — the PNG is the artifact, and
             # leaving figures open piles up memory across a multi-view run.
             plt.close(figure)

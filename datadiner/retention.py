@@ -58,6 +58,16 @@ def _maybe_show():
         plt.show()
 
 
+def _announce_figure(path):
+    """Tell the user, in the chat window, where a saved figure landed.
+
+    With ``Agg`` (script/agent runs) figures are never shown, so the only signal
+    a chart exists is this line. Print the resolved path so it's easy to find.
+    """
+    from pathlib import Path
+    print(f"the figure is ready you can find it here: {Path(path).resolve()}")
+
+
 @contextmanager
 def no_figure_display():
     """Suppress ``plt.show()`` for views called inside this block.
@@ -289,6 +299,7 @@ def _plot_heatmap(pivot, title, annotation_fmt, figsize, save=None):
     plt.tight_layout()
     if save:
         plt.savefig(save, dpi=150, bbox_inches='tight')
+        _announce_figure(save)
     _maybe_show()
 
     return fig, ax
@@ -741,6 +752,7 @@ def retention_curve(df, max_periods=40, segment_by=None, active_event=None, save
     plt.tight_layout()
     if save:
         plt.savefig(save, dpi=150, bbox_inches='tight')
+        _announce_figure(save)
     _maybe_show()
 
     return fig, ax
@@ -817,6 +829,7 @@ def usage_frequency(df, save=None):
     plt.tight_layout()
     if save:
         plt.savefig(save, dpi=150, bbox_inches='tight')
+        _announce_figure(save)
     _maybe_show()
 
     return fig, ax, avg_days_per_user
@@ -942,6 +955,7 @@ def _lifecycle_one(df, save_prefix, title_suffix=''):
     plt.tight_layout()
     if save_prefix:
         plt.savefig(f'{save_prefix}_bars.png', dpi=150, bbox_inches='tight')
+        _announce_figure(f'{save_prefix}_bars.png')
     _maybe_show()
 
     # --- Plot 2: Quick Ratio ---
@@ -961,6 +975,7 @@ def _lifecycle_one(df, save_prefix, title_suffix=''):
     plt.tight_layout()
     if save_prefix:
         plt.savefig(f'{save_prefix}_quick_ratio.png', dpi=150, bbox_inches='tight')
+        _announce_figure(f'{save_prefix}_quick_ratio.png')
     _maybe_show()
 
     return states_df, (fig1, fig2)

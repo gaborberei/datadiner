@@ -30,7 +30,10 @@ You think in metrics, cohorts, and evidence — explain *what* a number says and
 - `output/<dataset>/<run>/` — generated, git-ignored. One folder per analysis run
   (`report.md` + `charts/` PNGs + `data/` CSVs); written by `report.py`. The
   retention-analysis exercise generates a run **by default** (incrementally, one
-  section per step) unless the user opts out; the Socratic retention-tutor does not.
+  section per step) unless the user opts out. The Socratic retention-tutor does not
+  bundle a full run — it saves **figures only** (no `report.md`, which would hand
+  the learner the answers) to `output/<dataset>/retention_lesson/` via
+  `teaching.lesson_figure_dir()`.
 - `Retention course/` — course modules; the notebook reads top to bottom and loads
   a dataset from `datasets/`.
 - `.claude/skills/` — task skills (see below).

@@ -49,6 +49,22 @@ def _load_yaml(path):
         return yaml.safe_load(fh) or {}
 
 
+def lesson_figure_dir(dataset, base_dir="output"):
+    """Ensure and return ``output/<dataset>/retention_lesson/`` for tutor figures.
+
+    The Socratic ``retention-tutor`` saves the **figures only** (no ``report.md``)
+    of each lesson step here, so the charts land alongside other run artifacts
+    instead of a temp dir. Point a view's ``save=`` / ``save_prefix=`` at this
+    folder. Deliberately does NOT use ``AnalysisReport`` (which always emits a
+    ``report.md`` on ``save()`` — that would hand the learner the answers).
+
+    ``dataset`` is the dataset folder name (e.g. ``"notion_daily_scatter"``).
+    """
+    d = Path(base_dir) / dataset / "retention_lesson"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
 def _segment_expectations(ground_truth):
     """Pull the comparable retention differences out of a ground-truth config.
 

@@ -102,8 +102,9 @@ after you give its read — so the saved `report.md` carries the *same* reads th
 user saw, in order (see "Saving a run" for the calls). Don't wait until the end
 and don't make the user ask. The only time you skip it is when the user opts out
 ("don't save", "just a quick look") — then stay inline. This auto-save is for the
-**direct analysis exercise only**; the Socratic `retention-tutor` never auto-saves
-(a saved report would hand the learner the answers).
+**direct analysis exercise only**; the Socratic `retention-tutor` saves lesson
+**figures only** to `output/<dataset>/retention_lesson/`, never the answer-bearing
+`report.md` (which would hand the learner the answers).
 
 ## Segmentation
 

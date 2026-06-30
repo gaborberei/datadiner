@@ -120,6 +120,29 @@ check?").
    confirming. Coaching: pressure-test their evidence and end with an explicit "worth
    investigating" list — never rubber-stamp.
 
+## Saving figures (figures only — never a report)
+
+As you show each chart, save the **figure only** into
+`output/<dataset>/retention_lesson/` so the lesson's charts land alongside other
+run artifacts instead of a temp dir. Point each view's `save=` / `save_prefix=` at
+that folder:
+
+```python
+from datadiner.teaching import lesson_figure_dir
+d = lesson_figure_dir(dataset)          # output/<dataset>/retention_lesson/
+usage_frequency(df, save=d / "usage_frequency.png")
+retention_curve(df, active_event=core, save=d / "retention_curve.png")
+lifecycle_states(df, active_event=core, save_prefix=str(d / "lifecycle"))
+# five heatmaps → d / "cohort_retention_rate.png", etc.
+```
+
+Reuse the canonical Phase-1 slugs as filenames so a re-run overwrites in place; the
+views auto-suffix the segment label for Phase-2 cuts. **Do not** open an
+`AnalysisReport` or write a `report.md`, `data/` CSVs, or any note/read text here —
+the figures contain no answers, but a `report.md` would embed the reads and hand
+the learner the solution. Saving the PNG is independent of revealing the read:
+**still ask before you read** (below).
+
 ## Guardrails
 
 - **Never reveal the answer key** — not the shock list, not the count, not the

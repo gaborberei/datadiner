@@ -188,6 +188,9 @@ def _plot_heatmap(pivot, title, annotation_fmt, figsize, save=None):
         cbar=False, mask=np.isnan(pivot.values),
         xticklabels=pivot.columns, yticklabels=pivot.index,
     )
+    # Compact tick labels so all cohort dates fit a screen without overflowing.
+    ax.tick_params(labelsize=6)
+    ax.set_yticklabels(ax.get_yticklabels(), rotation=0)
 
     # Grey "Users" column
     for i in range(pivot.shape[0]):
@@ -206,7 +209,7 @@ def _plot_heatmap(pivot, title, annotation_fmt, figsize, save=None):
                 continue
             if j == 0:  # Users column
                 ax.text(j + 0.5, i + 0.5, f'{int(val):,}',
-                        ha='center', va='center', fontsize=7,
+                        ha='center', va='center', fontsize=5,
                         color='black', fontweight='bold')
             else:
                 color_val = colored[i, j]
@@ -230,10 +233,10 @@ def _plot_heatmap(pivot, title, annotation_fmt, figsize, save=None):
                     label = f'{val:.1f}'
 
                 ax.text(j + 0.5, i + 0.5, label,
-                        ha='center', va='center', fontsize=7,
+                        ha='center', va='center', fontsize=5,
                         color=text_color)
 
-    ax.set_title(title, fontsize=16, fontweight='bold')
+    ax.set_title(title, fontsize=13, fontweight='bold')
 
     plt.tight_layout()
     if save:
@@ -273,7 +276,7 @@ def _cohort_heatmap(df, granularity, segment_by, active_event, save,
         pivot = transform(cohort_data, sizes, pcol, maxp, fmt)
 
         period_label = 'Weeks' if granularity in ('week', 'weekly') else 'Months'
-        figsize = (20, 12) if granularity in ('week', 'weekly') else (16, 8)
+        figsize = (13, 8) if granularity in ('week', 'weekly') else (11, 6)
         suffix = '' if label is None else f' — {label}'
 
         fig, ax = _plot_heatmap(

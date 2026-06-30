@@ -32,6 +32,7 @@ Usage:
     print(run)   # -> output/notion/<timestamp>/
 """
 
+import json
 import re
 from datetime import datetime
 from pathlib import Path
@@ -46,7 +47,9 @@ from .retention import (
     usage_frequency,
     retention_curve,
     lifecycle_states,
+    retention_counts_heatmap,
     retention_rate_heatmap,
+    churn_counts_heatmap,
     churn_rate_heatmap,
     vs_average_heatmap,
 )
@@ -168,10 +171,17 @@ class AnalysisReport:
     Build it up one view at a time with :meth:`section`, then :meth:`save`.
     Figures are saved from the objects the views return, so it works whether or
     not the view was called with ``save=``.
+
+    A run is **resumable**: each :meth:`save` writes a ``.report_state.json``
+    manifest alongside ``report.md``. Re-opening the same run folder (via
+    ``resume=True`` or :meth:`open_or_create`) reloads the accumulated sections,
+    so a later process can add to the same folder instead of starting a new one.
     """
 
+    MANIFEST_NAME = ".report_state.json"
+
     def __init__(self, dataset, df=None, source=None, base_dir="output",
-                 run_id=None):
+                 run_id=None, resume=False):
         self.dataset = dataset
         self.run_id = run_id or datetime.now().strftime("%Y-%m-%d-%H%M")
         self.dir = Path(base_dir) / dataset / self.run_id
@@ -180,8 +190,30 @@ class AnalysisReport:
         for d in (self.charts_dir, self.data_dir):
             d.mkdir(parents=True, exist_ok=True)
 
-        self._sections = []
-        self._header = self._build_header(df, source)
+        manifest = self.dir / self.MANIFEST_NAME
+        if (resume or manifest.exists()) and manifest.exists():
+            state = json.loads(manifest.read_text())
+            self._header = state["header"]
+            self._sections = state["sections"]
+        else:
+            self._sections = []
+            self._header = self._build_header(df, source)
+
+    @classmethod
+    def open_or_create(cls, dataset, df=None, source=None, base_dir="output"):
+        """Resume the most recent run folder for ``dataset``, or create one.
+
+        Use this to keep a whole interactive session in a **single** folder:
+        every step re-opens the same run and appends its section, instead of
+        stamping a new timestamped folder per step.
+        """
+        parent = Path(base_dir) / dataset
+        runs = sorted(p for p in parent.glob("*")
+                      if p.is_dir() and (p / cls.MANIFEST_NAME).exists())
+        if runs:
+            return cls(dataset, df=df, source=source, base_dir=base_dir,
+                       run_id=runs[-1].name, resume=True)
+        return cls(dataset, df=df, source=source, base_dir=base_dir)
 
     def _build_header(self, df, source):
         lines = [
@@ -245,16 +277,72 @@ class AnalysisReport:
             parts.append("")
             parts.append(_df_preview_md(df))
             parts.append("")
-        self._sections.append("\n".join(parts).rstrip() + "\n")
+        block = {"slug": slug, "md": "\n".join(parts).rstrip() + "\n"}
+
+        # Upsert by slug: re-running a view updates its section in place rather
+        # than appending a duplicate.
+        for i, existing in enumerate(self._sections):
+            if existing["slug"] == slug:
+                self._sections[i] = block
+                break
+        else:
+            self._sections.append(block)
         return self
 
     def save(self):
-        """Write ``report.md`` and return the run directory Path."""
-        body = self._header + "\n" + "\n".join(self._sections)
+        """Write ``report.md`` + the resume manifest; return the run dir Path."""
+        body = self._header + "\n" + "\n".join(s["md"] for s in self._sections)
         report_path = self.dir / "report.md"
         report_path.write_text(body.rstrip() + "\n")
+        (self.dir / self.MANIFEST_NAME).write_text(
+            json.dumps({"header": self._header, "sections": self._sections},
+                       indent=2)
+        )
         print(f"Report written to {self.dir}")
         return self.dir
+
+
+# ---------------------------------------------------------------------------
+# Public API — the cohort heatmap block (all five views)
+# ---------------------------------------------------------------------------
+
+# The five cohort heatmaps, in reading order: (title, view_fn, matrix kind, note).
+# Single source of truth so no caller can silently emit a subset.
+_COHORT_VIEWS = [
+    ("Cohort retention rate", retention_rate_heatmap, "rate",
+     "Each cohort's % still active by age. Color is column-normalized "
+     "(good *for that age*); read the grey Users column before trusting a rate."),
+    ("Cohort retention counts", retention_counts_heatmap, "counts",
+     "Absolute users still active per cohort/age — the size of the base, not its "
+     "quality. Read alongside the rate view."),
+    ("Cohort churn rate", churn_rate_heatmap, "churn_rate",
+     "Period-over-period change in retention (pp). A sharp diagonal is the "
+     "signature of a calendar-period shock — worth investigating, not a proven cause."),
+    ("Cohort churn counts", churn_counts_heatmap, "churn_counts",
+     "Absolute users lost per cohort/age — the magnitude behind the churn-rate view."),
+    ("Cohort vs average", vs_average_heatmap, "vs_average",
+     "Deviation from the average retention for each age: positive = this cohort "
+     "beat its peers, negative = lagged. Best for spotting which cohort broke."),
+]
+
+
+def cohort_sections(report, df, granularity="weekly", active_event=None):
+    """Add all **five** cohort heatmaps (+ their matrices) to ``report``.
+
+    Renders rate, counts, churn-rate, churn-counts and vs-average in reading
+    order, each with its chart and the matching ``cohort_matrix`` CSV. This is
+    the single place that defines "the cohort block", so the guided exercise and
+    :func:`overall_report` always emit the complete set.
+    """
+    for title, view_fn, kind, note in _COHORT_VIEWS:
+        fig, _ax = view_fn(df, granularity=granularity, active_event=active_event)
+        report.section(
+            title, fig=fig,
+            data=cohort_matrix(df, granularity=granularity, kind=kind,
+                               active_event=active_event),
+            note=note,
+        )
+    return report
 
 
 # ---------------------------------------------------------------------------
@@ -266,8 +354,8 @@ def overall_report(df, dataset, source=None, active_event=None,
     """Run the Phase-1 overall sequence and write a full output folder.
 
     Mirrors the default workflow order: usage frequency → retention curve →
-    lifecycle → retention-rate / churn-rate / vs-average cohort heatmaps, all
-    un-segmented. Returns the run directory Path.
+    lifecycle → all five cohort heatmaps (rate, counts, churn-rate,
+    churn-counts, vs-average), un-segmented. Returns the run directory Path.
 
     `active_event` (e.g. the brief's core_action) is applied to every view that
     supports it, so retention means "did the core action".
@@ -299,37 +387,7 @@ def overall_report(df, dataset, source=None, active_event=None,
              "Quick Ratio = (New + Resurrected) / Churned (>1 growing net, <1 shrinking).",
     )
 
-    fig, _ax = retention_rate_heatmap(df, granularity=granularity,
-                                      active_event=active_event)
-    report.section(
-        "Cohort retention rate",
-        fig=fig,
-        data=cohort_matrix(df, granularity=granularity, kind="rate",
-                           active_event=active_event),
-        note="Each cohort's % still active by age. Color is column-normalized "
-             "(good *for that age*); read the grey Users column before trusting a rate.",
-    )
-
-    fig, _ax = churn_rate_heatmap(df, granularity=granularity,
-                                  active_event=active_event)
-    report.section(
-        "Cohort churn rate",
-        fig=fig,
-        data=cohort_matrix(df, granularity=granularity, kind="churn_rate",
-                           active_event=active_event),
-        note="Period-over-period change in retention (pp). A sharp diagonal is the "
-             "signature of a calendar-period shock — worth investigating, not a proven cause.",
-    )
-
-    fig, _ax = vs_average_heatmap(df, granularity=granularity,
-                                  active_event=active_event)
-    report.section(
-        "Cohort vs average",
-        fig=fig,
-        data=cohort_matrix(df, granularity=granularity, kind="vs_average",
-                           active_event=active_event),
-        note="Deviation from the average retention for each age: positive = this "
-             "cohort beat its peers, negative = lagged. Best for spotting which cohort broke.",
-    )
+    cohort_sections(report, df, granularity=granularity,
+                    active_event=active_event)
 
     return report.save()

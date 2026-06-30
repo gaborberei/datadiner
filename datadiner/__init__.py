@@ -33,7 +33,7 @@ from .retention import (
     cohort_patterns,
 )
 from . import report  # noqa: F401
-from .report import AnalysisReport, overall_report
+from .report import AnalysisReport, cohort_sections, overall_report
 from . import teaching  # noqa: F401
 from .teaching import load_rubric
 
@@ -56,5 +56,6 @@ __all__ = [
     "cohort_matrix",
     "cohort_patterns",
     "AnalysisReport",
+    "cohort_sections",
     "overall_report",
 ]

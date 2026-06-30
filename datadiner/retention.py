@@ -19,6 +19,25 @@ from contextlib import contextmanager
 import pandas as pd
 import numpy as np
 import seaborn as sns
+import matplotlib
+
+
+def _in_notebook():
+    """True only inside a Jupyter/IPython kernel (inline canvas available)."""
+    try:
+        from IPython import get_ipython
+        shell = get_ipython()
+        return shell is not None and shell.__class__.__name__ == "ZMQInteractiveShell"
+    except Exception:
+        return False
+
+
+# Outside a notebook there is no inline canvas, so a GUI backend would pop a
+# blocking window per view. Select the non-interactive Agg backend before pyplot
+# is imported so no GUI event loop ever starts; the notebook keeps its inline one.
+if not _in_notebook():
+    matplotlib.use("Agg")
+
 import matplotlib.pyplot as plt
 
 
@@ -28,8 +47,9 @@ _MAX_SEGMENT_GROUPS = 30
 
 
 # A single interactive view pops a window (plt.show); batch callers that bundle
-# many views (report.py) turn this off so they don't flood the screen.
-_SHOW_FIGURES = True
+# many views (report.py) turn this off so they don't flood the screen. Default to
+# notebook-only: in a plain script / agent run figures are saved, never shown.
+_SHOW_FIGURES = _in_notebook()
 
 
 def _maybe_show():

@@ -38,11 +38,13 @@ from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
+import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
 from .io import summarize_events
 from .retention import (
     _safe_label,
+    no_figure_display,
     cohort_matrix,
     usage_frequency,
     retention_curve,
@@ -256,6 +258,9 @@ class AnalysisReport:
             stem = slug if label is None else f"{slug}_{_safe_label(str(label))}"
             rel = f"charts/{stem}.png"
             figure.savefig(self.dir / rel, dpi=150, bbox_inches="tight")
+            # Release the figure once it's on disk — the PNG is the artifact, and
+            # leaving figures open piles up memory across a multi-view run.
+            plt.close(figure)
             caption = f" — {label}" if label is not None else ""
             chart_md.append(f"![{title}{caption}]({rel})")
 
@@ -301,6 +306,16 @@ class AnalysisReport:
         print(f"Report written to {self.dir}")
         return self.dir
 
+    def assert_phase1_complete(self):
+        """Raise ``IncompleteRunError`` if any canonical Phase-1 view is missing.
+
+        Thin instance wrapper around :func:`assert_phase1_complete`; call it at
+        the end of the guided exercise (after :func:`ensure_phase1`) so a run can
+        never be saved silently missing a canonical view. Returns ``self``.
+        """
+        assert_phase1_complete(self)
+        return self
+
 
 # ---------------------------------------------------------------------------
 # Public API — the cohort heatmap block (all five views)
@@ -326,21 +341,131 @@ _COHORT_VIEWS = [
 ]
 
 
-def cohort_sections(report, df, granularity="weekly", active_event=None):
+def cohort_sections(report, df, granularity="weekly", active_event=None,
+                    notes=None, skip_existing=False):
     """Add all **five** cohort heatmaps (+ their matrices) to ``report``.
 
     Renders rate, counts, churn-rate, churn-counts and vs-average in reading
     order, each with its chart and the matching ``cohort_matrix`` CSV. This is
     the single place that defines "the cohort block", so the guided exercise and
     :func:`overall_report` always emit the complete set.
+
+    ``notes`` (slug -> str) overrides the default read for a view — so the guided
+    exercise can carry its own live read. ``skip_existing`` leaves any view whose
+    slug is already in ``report`` untouched (used by :func:`ensure_phase1` to fill
+    only the gaps without re-rendering or clobbering the model's notes).
     """
-    for title, view_fn, kind, note in _COHORT_VIEWS:
-        fig, _ax = view_fn(df, granularity=granularity, active_event=active_event)
-        report.section(
-            title, fig=fig,
-            data=cohort_matrix(df, granularity=granularity, kind=kind,
-                               active_event=active_event),
-            note=note,
+    notes = notes or {}
+    present = {s["slug"] for s in report._sections}
+    with no_figure_display():
+        for title, view_fn, kind, note in _COHORT_VIEWS:
+            if skip_existing and _slugify(title) in present:
+                continue
+            fig, _ax = view_fn(df, granularity=granularity,
+                               active_event=active_event)
+            report.section(
+                title, fig=fig,
+                data=cohort_matrix(df, granularity=granularity, kind=kind,
+                                   active_event=active_event),
+                note=notes.get(_slugify(title), note),
+            )
+    return report
+
+
+# ---------------------------------------------------------------------------
+# Public API — the three overview views + the canonical Phase-1 checklist
+# ---------------------------------------------------------------------------
+
+# Builders wrap each overview view's differing return shape into the
+# (fig, data) pair ``section`` expects. usage_frequency takes no active_event.
+def _usage_frequency_section(df, active_event=None):
+    fig, _ax, avg_days = usage_frequency(df)
+    return fig, avg_days
+
+
+def _retention_curve_section(df, active_event=None):
+    fig, _ax = retention_curve(df, active_event=active_event)
+    return fig, None
+
+
+def _lifecycle_section(df, active_event=None):
+    states_df, (fig_bars, fig_qr) = lifecycle_states(df, active_event=active_event)
+    return {"bars": fig_bars, "quick_ratio": fig_qr}, states_df
+
+
+# The three overview views, in workflow order: (title, builder, note).
+# Single source of truth, mirroring `_COHORT_VIEWS`, so the guided exercise and
+# `overall_report` share one definition.
+_OVERVIEW_VIEWS = [
+    ("Usage frequency", _usage_frequency_section,
+     "Average active days per month per user — the engagement cadence "
+     "that frames what 'active' should mean (daily vs weekly vs monthly)."),
+    ("Retention curve", _retention_curve_section,
+     "The overall decay shape: how fast the average cohort loses users "
+     "over the weeks since first activity."),
+    ("Lifecycle states", _lifecycle_section,
+     "Weekly New / Retained / Resurrected / At-Risk / Churned, and the "
+     "Quick Ratio = (New + Resurrected) / Churned (>1 growing net, <1 shrinking)."),
+]
+
+# The canonical Phase-1 section slugs (overview, then cohort), in workflow order.
+PHASE1_REQUIRED_SLUGS = (
+    [_slugify(title) for title, *_ in _OVERVIEW_VIEWS]
+    + [_slugify(title) for title, *_ in _COHORT_VIEWS]
+)
+
+
+class IncompleteRunError(ValueError):
+    """A guided run is missing one or more canonical Phase-1 views."""
+
+
+def overview_sections(report, df, active_event=None, notes=None,
+                      skip_existing=False):
+    """Add the three overview views (usage frequency, retention curve, lifecycle).
+
+    Counterpart to :func:`cohort_sections` for the non-cohort Phase-1 views. See
+    that function for ``notes`` / ``skip_existing`` semantics.
+    """
+    notes = notes or {}
+    present = {s["slug"] for s in report._sections}
+    with no_figure_display():
+        for title, builder, note in _OVERVIEW_VIEWS:
+            if skip_existing and _slugify(title) in present:
+                continue
+            fig, data = builder(df, active_event)
+            report.section(title, fig=fig, data=data,
+                           note=notes.get(_slugify(title), note))
+    return report
+
+
+def ensure_phase1(report, df, active_event=None, granularity="weekly", notes=None):
+    """Generate any canonical Phase-1 view ``report`` is still missing.
+
+    Idempotent: views already added (by slug) are left untouched, so the guided
+    exercise can hand-build sections with its own reads and then call this to fill
+    the gaps without duplicating or clobbering them. ``notes`` (slug -> str)
+    supplies a read for views generated here. Returns ``report``.
+    """
+    overview_sections(report, df, active_event=active_event, notes=notes,
+                      skip_existing=True)
+    cohort_sections(report, df, granularity=granularity, active_event=active_event,
+                    notes=notes, skip_existing=True)
+    return report
+
+
+def assert_phase1_complete(report):
+    """Raise :class:`IncompleteRunError` if a canonical Phase-1 view is missing.
+
+    The completeness **guard** — call it at the end of the guided exercise (after
+    :func:`ensure_phase1`) before the final ``save()``. Names the missing slugs.
+    """
+    present = {s["slug"] for s in report._sections}
+    missing = [s for s in PHASE1_REQUIRED_SLUGS if s not in present]
+    if missing:
+        raise IncompleteRunError(
+            "run is missing canonical Phase-1 view(s): "
+            + ", ".join(missing)
+            + " — call ensure_phase1(report, df, active_event=...) to generate them."
         )
     return report
 
@@ -362,32 +487,9 @@ def overall_report(df, dataset, source=None, active_event=None,
     """
     report = AnalysisReport(dataset, df=df, source=source, base_dir=base_dir)
 
-    fig, _ax, avg_days = usage_frequency(df)
-    report.section(
-        "Usage frequency",
-        fig=fig, data=avg_days,
-        note="Average active days per month per user — the engagement cadence "
-             "that frames what 'active' should mean (daily vs weekly vs monthly).",
-    )
-
-    fig, _ax = retention_curve(df, active_event=active_event)
-    report.section(
-        "Retention curve",
-        fig=fig,
-        note="The overall decay shape: how fast the average cohort loses users "
-             "over the weeks since first activity.",
-    )
-
-    states_df, (fig_bars, fig_qr) = lifecycle_states(df, active_event=active_event)
-    report.section(
-        "Lifecycle states",
-        fig={"bars": fig_bars, "quick_ratio": fig_qr},
-        data=states_df,
-        note="Weekly New / Retained / Resurrected / At-Risk / Churned, and the "
-             "Quick Ratio = (New + Resurrected) / Churned (>1 growing net, <1 shrinking).",
-    )
-
+    overview_sections(report, df, active_event=active_event)
     cohort_sections(report, df, granularity=granularity,
                     active_event=active_event)
 
+    assert_phase1_complete(report)
     return report.save()

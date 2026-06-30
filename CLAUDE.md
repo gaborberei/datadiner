@@ -16,7 +16,10 @@ You think in metrics, cohorts, and evidence — explain *what* a number says and
     bring-your-own CSV that has no brief.
   - `report.py` — `AnalysisReport` / `overall_report()` bundle a run into an
     output folder (charts + CSVs + `report.md`); `retention.cohort_matrix()`
-    returns a heatmap's pivot as data for CSV export.
+    returns a heatmap's pivot as data for CSV export. Owns the canonical Phase-1
+    checklist (`PHASE1_REQUIRED_SLUGS`): `ensure_phase1()` generates any missing
+    canonical view and `assert_phase1_complete()` guards a run from being saved
+    incomplete.
   - *(planned: `engagement.py`, `activation.py`, `resurrection.py` — one per domain)*
 - `datasets/<name>/` — one folder per dataset, each holding:
   - the activity-log CSV (required: `date` + `user_id` + `event_type`; richer logs
@@ -43,9 +46,12 @@ Two phases, **overall before segments** (the retention-analysis skill drives it
 step-by-step): **(0)** run the data-quality-gate, then **Phase 1 — overall:**
 **(1)** usage-frequency histogram (the engagement cadence — frames the metric) →
 **(2)** retention curve → **(3)** lifecycle bars + Quick Ratio → **(4)** cohort
-analysis (heatmaps), all un-segmented. **Phase 2:** ask the user which segment(s)
-or combination to drill into, then re-run with `segment_by=`. Use
-`active_event=<brief core_action>` when retention should mean "did the core action".
+analysis — **all five heatmaps** (rate, counts, churn-rate, churn-counts,
+vs-average, via `cohort_sections`), all un-segmented. A guided run closes Phase 1
+with `ensure_phase1()` + `assert_phase1_complete()` before its final save, so it is
+verified complete. **Phase 2:** ask the user which segment(s) or combination to drill
+into, then re-run with `segment_by=`. Use `active_event=<brief core_action>` when
+retention should mean "did the core action".
 
 ## Skills
 

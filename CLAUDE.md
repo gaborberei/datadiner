@@ -50,8 +50,11 @@ analysis — **all five heatmaps** (rate, counts, churn-rate, churn-counts,
 vs-average, via `cohort_sections`), all un-segmented. A guided run closes Phase 1
 with `ensure_phase1()` + `assert_phase1_complete()` before its final save, so it is
 verified complete. **Phase 2:** ask the user which segment(s) or combination to drill
-into, then re-run with `segment_by=`. Use `active_event=<brief core_action>` when
-retention should mean "did the core action".
+into, then re-run with `segment_by=`. **Default `active_event=<brief core_action>`**
+so retention means "did the core action" — pass it to every view. The dataset
+brief's own `retention_metric` (typically "any event_type") still documents the
+canonical definition; switch back to it explicitly when a stakeholder wants
+presence rather than value, but lead with the core action.
 
 ## Skills
 
@@ -78,3 +81,5 @@ retention should mean "did the core action".
 3. Define/confirm the metric before charting when it's ambiguous.
 4. Flag anomalies as "worth investigating", not proven cause, until drilled into.
 5. Respect the data grain — never build daily analyses on weekly-grain data.
+6. Default retention to the core action — pass `active_event=<brief core_action>`
+   to every view unless the user asks for the brief's any-event definition.

@@ -68,8 +68,12 @@ chart — segments only mean something against the whole.
 2. **`retention_curve(df)`** — the overall decay shape: how fast do we lose users?
 3. **`lifecycle_states(df)`** — weekly New / Retained / Resurrected / At-Risk /
    Churned plus the Quick Ratio (>1 growing net, <1 shrinking).
-4. **Cohort analysis** — the heatmaps: lead with `retention_rate_heatmap(df)`, then
-   `churn_rate_heatmap` / `vs_average_heatmap` to localize where a cohort broke.
+4. **Cohort analysis** — the heatmaps. In the **guided exercise**, emit **all five**
+   (rate, counts, churn-rate, churn-counts, vs-average) in one call via
+   `cohort_sections(report, df, active_event=…)` — never hand-pick a subset — then
+   read whichever localize the signal (typically `retention_rate` + `churn_rate` /
+   `vs_average`). For an **ad-hoc single question** (router mode), it's fine to run
+   just the one heatmap the question asks for.
 
 **Phase 2 — Segment drill-down (user's choice):** once the overall picture is read,
 **ask the user which segment column(s) or combination** to inspect (offer the brief's
@@ -85,7 +89,10 @@ every chart at once:
 - **Phase 1:** for each overall view (frequency → curve → lifecycle → cohort): run
   **one** view, give the plain-English read (cite file + columns + date range), then
   **pause** for the user's interpretation before advancing. Offer the next view each
-  time. (Frequency comes first because it sets what "active" should mean.)
+  time. (Frequency comes first because it sets what "active" should mean.) The cohort
+  step produces all five heatmaps (`cohort_sections`). **Close Phase 1** with
+  `ensure_phase1(report, df, …)` + `report.assert_phase1_complete()` before the final
+  `save()` so the run can't be silently incomplete (see "Saving a run").
 - **Phase 2:** ask **which segment(s) or combination** they want to drill into, then
   re-run the relevant view segmented and read it against the overall.
 
@@ -130,15 +137,14 @@ add a section right after each view's read, and `save()` after each step so the
 folder is always current.
 
 ```python
-from datadiner.report import AnalysisReport
+from datadiner.report import AnalysisReport, cohort_sections, ensure_phase1
 
 report = AnalysisReport("notion", df=df, source="datasets/notion/notion_causal_events.csv")
 fig, ax, avg = usage_frequency(df)
 report.section("Usage frequency", fig=fig, data=avg, note="<your plain-English read>")
-fig, ax = retention_rate_heatmap(df, active_event='page_created')
-report.section("Cohort retention rate", fig=fig,
-               data=cohort_matrix(df, kind='rate', active_event='page_created'),
-               note="<your read>")
+# the cohort step emits ALL FIVE views at once (use the canonical titles):
+cohort_sections(report, df, active_event='page_created',
+                notes={"cohort_retention_rate": "<your read>"})  # optional per-view reads
 report.save()   # writes report.md, returns the run dir
 ```
 
@@ -146,6 +152,22 @@ report.save()   # writes report.md, returns the run dir
 `{name: fig}` dict, or the `list[(label, …)]` a segmented view returns — plus a
 DataFrame (or per-segment list) for the CSV. Use `cohort_matrix(df, kind=…)` to get a
 heatmap's numbers as data (the heatmaps return only `fig, ax`).
+
+**Close Phase 1 with the completeness guard.** Before the final `save()`, run the two
+helpers so no canonical view is silently missing — `ensure_phase1` generates any of
+the eight Phase-1 views you didn't hand-build (idempotent; won't duplicate or clobber
+your reads), and `assert_phase1_complete` raises if any is still absent:
+
+```python
+ensure_phase1(report, df, active_event='page_created')  # fills the gaps
+report.assert_phase1_complete()                          # guard: raises IncompleteRunError if not
+report.save()
+```
+
+Use the **canonical section titles** for the eight Phase-1 views ("Usage frequency",
+"Retention curve", "Lifecycle states", "Cohort retention rate/counts", "Cohort
+churn rate/counts", "Cohort vs average") so slugs match and `ensure_phase1` skips the
+ones you already added instead of adding a near-duplicate.
 
 **One-shot** — build the whole Phase-1 overall folder in workflow order:
 

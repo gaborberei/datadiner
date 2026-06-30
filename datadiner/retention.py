@@ -14,6 +14,7 @@ Usage:
 """
 
 import warnings
+from contextlib import contextmanager
 
 import pandas as pd
 import numpy as np
@@ -24,6 +25,33 @@ import matplotlib.pyplot as plt
 # Readability guard: above this many segment groups, overlaid lines / panels
 # stop being legible, so warn (the skill should ask the user to narrow down).
 _MAX_SEGMENT_GROUPS = 30
+
+
+# A single interactive view pops a window (plt.show); batch callers that bundle
+# many views (report.py) turn this off so they don't flood the screen.
+_SHOW_FIGURES = True
+
+
+def _maybe_show():
+    """``plt.show()`` only when figure display is enabled (see ``no_figure_display``)."""
+    if _SHOW_FIGURES:
+        plt.show()
+
+
+@contextmanager
+def no_figure_display():
+    """Suppress ``plt.show()`` for views called inside this block.
+
+    Used by the report bundler so generating a run writes PNGs without opening a
+    window per view. Restores the previous setting on exit (re-entrant-safe).
+    """
+    global _SHOW_FIGURES
+    prev = _SHOW_FIGURES
+    _SHOW_FIGURES = False
+    try:
+        yield
+    finally:
+        _SHOW_FIGURES = prev
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +269,7 @@ def _plot_heatmap(pivot, title, annotation_fmt, figsize, save=None):
     plt.tight_layout()
     if save:
         plt.savefig(save, dpi=150, bbox_inches='tight')
-    plt.show()
+    _maybe_show()
 
     return fig, ax
 
@@ -693,7 +721,7 @@ def retention_curve(df, max_periods=40, segment_by=None, active_event=None, save
     plt.tight_layout()
     if save:
         plt.savefig(save, dpi=150, bbox_inches='tight')
-    plt.show()
+    _maybe_show()
 
     return fig, ax
 
@@ -769,7 +797,7 @@ def usage_frequency(df, save=None):
     plt.tight_layout()
     if save:
         plt.savefig(save, dpi=150, bbox_inches='tight')
-    plt.show()
+    _maybe_show()
 
     return fig, ax, avg_days_per_user
 
@@ -894,7 +922,7 @@ def _lifecycle_one(df, save_prefix, title_suffix=''):
     plt.tight_layout()
     if save_prefix:
         plt.savefig(f'{save_prefix}_bars.png', dpi=150, bbox_inches='tight')
-    plt.show()
+    _maybe_show()
 
     # --- Plot 2: Quick Ratio ---
     states_df['Quick Ratio'] = (
@@ -913,6 +941,6 @@ def _lifecycle_one(df, save_prefix, title_suffix=''):
     plt.tight_layout()
     if save_prefix:
         plt.savefig(f'{save_prefix}_quick_ratio.png', dpi=150, bbox_inches='tight')
-    plt.show()
+    _maybe_show()
 
     return states_df, (fig1, fig2)

@@ -33,7 +33,16 @@ from .retention import (
     cohort_patterns,
 )
 from . import report  # noqa: F401
-from .report import AnalysisReport, cohort_sections, overall_report
+from .report import (
+    AnalysisReport,
+    cohort_sections,
+    overview_sections,
+    overall_report,
+    ensure_phase1,
+    assert_phase1_complete,
+    IncompleteRunError,
+    PHASE1_REQUIRED_SLUGS,
+)
 from . import teaching  # noqa: F401
 from .teaching import load_rubric
 
@@ -57,5 +66,10 @@ __all__ = [
     "cohort_patterns",
     "AnalysisReport",
     "cohort_sections",
+    "overview_sections",
     "overall_report",
+    "ensure_phase1",
+    "assert_phase1_complete",
+    "IncompleteRunError",
+    "PHASE1_REQUIRED_SLUGS",
 ]

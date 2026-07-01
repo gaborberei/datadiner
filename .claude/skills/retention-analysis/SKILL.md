@@ -89,7 +89,9 @@ every chart at once:
 - **Phase 1:** for each overall view (frequency → curve → lifecycle → cohort): run
   **one** view, give the plain-English read (cite file + columns + date range), then
   **pause** for the user's interpretation before advancing. Offer the next view each
-  time. (Frequency comes first because it sets what "active" should mean.) The cohort
+  time. As each chart renders, **announce the figure** with the standard block
+  (`📊 <View name> — figure generated and saved to:` then the path — see "Saving a
+  run"). (Frequency comes first because it sets what "active" should mean.) The cohort
   step produces all five heatmaps (`cohort_sections`). **Close Phase 1** with
   `ensure_phase1(report, df, …)` + `report.assert_phase1_complete()` before the final
   `save()` so the run can't be silently incomplete (see "Saving a run").
@@ -131,6 +133,16 @@ only when the user opts out ("don't save", "just a quick look"). A run is bundle
 into `output/<dataset>/<YYYY-MM-DD-HHMM>/`: a `report.md` (provenance + one section
 per view with the read, the embedded chart, and a link to the data) alongside
 `charts/` PNGs and `data/` CSVs. The folder is git-ignored.
+
+📊 **Announce every figure as it renders.** Post a standard block — `📊 <View name> —
+figure generated and saved to:` on one line, the PNG path on the next — so the user
+can open the chart alongside the read. Point at the run folder's `charts/` PNG so the
+announced path matches where `AnalysisReport` actually writes:
+
+```
+📊 Usage-frequency histogram — figure generated and saved to:
+output/<dataset>/<YYYY-MM-DD-HHMM>/charts/usage_frequency.png
+```
 
 **Incremental — the default path during the guided exercise** (so the report carries
 the same reads you gave the user, one section per step): open the report once, then

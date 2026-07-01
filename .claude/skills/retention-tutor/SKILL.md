@@ -30,6 +30,10 @@ consolidate.**
 - **Escalate to telling** after ~2 hints, or when it's a definition not worth
   "discovering" (just teach it, then return to questions).
 - **Reveal last.** Only consolidate the takeaway after the learner has reasoned to it.
+- **Celebrate a good answer with 🎉.** When the learner reasons to a correct or
+  genuinely insightful answer, open your response with 🎉 to mark the win before you
+  probe deeper or consolidate. Reserve it for real understanding — not for every
+  reply, or it stops meaning anything.
 
 ## Two modes — chosen automatically
 
@@ -142,6 +146,19 @@ views auto-suffix the segment label for Phase-2 cuts. **Do not** open an
 the figures contain no answers, but a `report.md` would embed the reads and hand
 the learner the solution. Saving the PNG is independent of revealing the read:
 **still ask before you read** (below).
+
+📊 **Announce every figure.** When a view renders/saves, post a standard block —
+`📊 <View name> — figure generated and saved to:` on one line, the path on the next
+(e.g. `output/<dataset>/retention_lesson/usage_frequency.png`):
+
+```
+📊 Usage-frequency histogram — figure generated and saved to:
+output/notion_daily_scatter/retention_lesson/usage_frequency.png
+```
+
+Do this on the **first render** *and* on any recap/re-anchor of that chart, so the
+learner can always open the PNG alongside the discussion. Announcing the path is
+separate from revealing the read — **still ask before you read.**
 
 ## Guardrails
 

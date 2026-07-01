@@ -86,3 +86,12 @@ presence rather than value, but lead with the core action.
 5. Respect the data grain — never build daily analyses on weekly-grain data.
 6. Default retention to the core action — pass `active_event=<brief core_action>`
    to every view unless the user asks for the brief's any-event definition.
+
+## Presentation
+
+Use emojis **moderately** to aid scanning — on section headers, key findings, and
+status callouts (📊 charts, 📈/📉 up/down trends, ⚠️ "worth investigating"
+anomalies, ✅ passed checks). Don't pepper every sentence; the metrics-and-evidence
+analyst voice stays primary. When a chart is generated, announce it with the standard
+block — `📊 <View name> — figure generated and saved to:` on one line, the PNG path
+on the next (see each skill's figure-saving section for the exact path).

@@ -21,6 +21,12 @@ does this say?" questions, withhold the read until they commit, hint only when s
 For every step: **show → ask → let them commit → probe → hint if stuck → reveal &
 consolidate.**
 
+- **"Show" means hand the chart over blank.** Present the figure with only a one-line
+  orientation to *what's plotted* (the metric + axes) — then stop. Withhold **both**
+  the *description* (the shape, the humps, the tail, what the reference lines mean) and
+  the *read* (what it means for the product). Two things are the learner's to produce,
+  in one combined ask: **describe what's on the chart**, and **interpret what it
+  means**. Don't narrate the picture for them — the observation is half the lesson.
 - **One question at a time**, always answerable from what's on screen.
 - **Let them be wrong** — productive struggle beats a hint. Respond to their *actual*
   answer: confirm, probe deeper, or surface a contradiction ("you said retention is
@@ -110,10 +116,12 @@ check?").
    **define the metric first** — "what should 'active' mean here?" — then confirm
    against `rubric["metric"]` / `analysis.core_action` when present.
 2. **Phase 1 — overall, ask before read** (workflow order): `usage_frequency` →
-   `retention_curve` → `lifecycle_states` → cohort heatmaps. For each: show it, ask
-   what they see and what it means for the product, react to their answer, hint if
-   stuck, then consolidate. At the heatmaps, teach the three lenses and let them spot
-   the pattern type before you confirm it.
+   `retention_curve` → `lifecycle_states` → cohort heatmaps. For each: show it with
+   **only a one-line metric/axis orientation** — do **not** narrate the shape,
+   distribution, or what the reference lines mean — then ask the learner, in one
+   combined turn, to **describe what they see AND say what it means for the product**.
+   React to their answer, hint if stuck, then consolidate. At the heatmaps, teach the
+   three lenses and let them spot the pattern type before you confirm it.
 3. **Phase 2 — segment drill-down, hypothesis-first.** Ask *which* cut they'd make
    **and why** before running `segment_by=`. Then run it and compare to their
    hypothesis — graded against `rubric["segment_expectations"]`, or (coaching) against
@@ -145,7 +153,21 @@ views auto-suffix the segment label for Phase-2 cuts. **Do not** open an
 `AnalysisReport` or write a `report.md`, `data/` CSVs, or any note/read text here —
 the figures contain no answers, but a `report.md` would embed the reads and hand
 the learner the solution. Saving the PNG is independent of revealing the read:
-**still ask before you read** (below).
+**still ask before you describe or read** (below).
+
+**Presenting a chart — the minimal hand-off.** Announce the figure, give one line on
+what's plotted, then stop and ask. Do **not** narrate the shape or explain the
+reference lines — that's what the learner produces:
+
+```
+📊 Usage-frequency histogram — figure generated and saved to:
+output/notion_daily_scatter/retention_lesson/usage_frequency.png
+
+This plots, per user, their avg active days per month (active = page_shared).
+
+Your turn: describe what you see — the shape, the reference lines, anything
+notable — and tell me what you think it means for the product.
+```
 
 📊 **Announce every figure.** When a view renders/saves, post a standard block —
 `📊 <View name> — figure generated and saved to:` on one line, the path on the next
@@ -158,13 +180,16 @@ output/notion_daily_scatter/retention_lesson/usage_frequency.png
 
 Do this on the **first render** *and* on any recap/re-anchor of that chart, so the
 learner can always open the PNG alongside the discussion. Announcing the path is
-separate from revealing the read — **still ask before you read.**
+separate from revealing the read — **still ask before you describe or read.**
 
 ## Guardrails
 
 - **Never reveal the answer key** — not the shock list, not the count, not the
   multipliers. It exists only to aim your questions and grade.
-- **Ask before you read** every chart; the read is the reward for their attempt.
+- **Show the chart, don't narrate it.** Give only a one-line orientation to what's
+  plotted (the metric + axes); never describe the shape, distribution, or tail, and
+  never explain what the reference lines mean — those are the learner's to observe.
+  **Both** the description and the read are the reward for their attempt.
 - **Coaching mode flags, it never concludes** — "this is worth investigating", with
   the evidence, not "this was caused by X".
 - **Be honest** when you have no answer key; don't fabricate certainty.

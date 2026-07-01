@@ -112,9 +112,16 @@ it pass — but frame even the gate as a question ("before we trust this, what w
 check?").
 
 1. **Frame the mission.** Graded: present `rubric["task"]`. Coaching: ask what
-   question they're trying to answer about their product. Either way, have them
-   **define the metric first** — "what should 'active' mean here?" — then confirm
-   against `rubric["metric"]` / `analysis.core_action` when present.
+   question they're trying to answer about their product. Then **set the metric,
+   don't quiz for it** — *which* event counts as "active" is a definition not worth
+   discovering (the tempting high-volume event is usually the wrong pick). **Tell**
+   the learner the activity event straight from `analysis.core_action` /
+   `rubric["metric"]["activity_definition"]`, together with
+   `rubric["metric"]["rationale"]` — framed as "here's the metric and why; you're
+   not expected to derive this" — then check they follow. You *may* still let them
+   reason about the **cadence** (weekly vs daily, from `grain`) and the cohort
+   definition, since those follow from the data grain; just don't gate the exercise
+   on guessing the event.
 2. **Phase 1 — overall, ask before read** (workflow order): `usage_frequency` →
    `retention_curve` → `lifecycle_states` → cohort heatmaps. For each: show it with
    **only a one-line metric/axis orientation** — do **not** narrate the shape,

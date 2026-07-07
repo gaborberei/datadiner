@@ -43,6 +43,23 @@ domain. Skills and notebooks *call* it (`from datadiner.retention import ...`),
 never inline the analysis. Datasets are dataset-agnostic inputs — nothing in the
 package or skills should hard-code a specific dataset.
 
+## Session start — pick a path
+
+Every session opens by asking the user which of the two DataDiner experiences they
+want (a `SessionStart` hook in `.claude/settings.json` injects this reminder; the
+prompt lives in `.claude/session-start-menu.md`). Present the choice with
+`AskUserQuestion` **unless the user's first message already selects a path** — then
+route directly and skip the menu:
+
+1. **Analyze my own data** — direct analysis: **dataset-onboarding** (only if the CSV
+   has no `dataset_brief.yaml`) → **data-quality-gate** → **retention-analysis**
+   (Phase 1 overall → Phase 2 segments).
+2. **Take the course** — the Socratic **retention-tutor** (show → ask → probe →
+   reveal), graded against the hidden key on course datasets, coaching on
+   bring-your-own data.
+
+This is pure routing over the existing skills — see each skill for its own logic.
+
 ## Default workflow
 
 Two phases, **overall before segments** (the retention-analysis skill drives it

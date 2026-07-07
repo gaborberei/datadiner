@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear",
+        "hooks": [
+          { "type": "command", "command": "cat .claude/session-start-menu.md" }
+        ]
+      }
+    ]
+  }
+}

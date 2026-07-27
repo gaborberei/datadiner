@@ -47,9 +47,13 @@ package or skills should hard-code a specific dataset.
 
 Every session opens by asking the user which of the two DataDiner experiences they
 want (a `SessionStart` hook in `.claude/settings.json` injects this reminder; the
-prompt lives in `.claude/session-start-menu.md`). Present the choice with
-`AskUserQuestion` **unless the user's first message already selects a path** — then
-route directly and skip the menu:
+prompt lives in `.claude/session-start-menu.md`, which is authoritative). The **first
+action of the session is an `AskUserQuestion`** offering the two paths below —
+`AskUserQuestion` adds its own free-text "Other", so never hand-write a third option.
+Skip the menu **only** for the closed list in the menu file: a named skill, an
+explicit teach/quiz request, or a specific CSV to analyze. A question that merely
+mentions the repo or a dataset ("what's in this folder?") does **not** select a path
+— answer it, then ask the menu in the same turn.
 
 1. **Analyze my own data** — direct analysis: **dataset-onboarding** (only if the CSV
    has no `dataset_brief.yaml`) → **data-quality-gate** → **retention-analysis**

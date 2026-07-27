@@ -21,7 +21,10 @@ this gate always has something to check.
 ## Instructions
 
 Run the bundled checker (all logic lives in Python — do not re-derive checks
-in prose). Run it from the repo root, passing the brief's path:
+in prose). Run it from the repo root, passing the brief's path, and read its
+**exit code** (`0` = PASS). Do not hand-roll equivalent checks in pandas: that
+produces a verbose ad-hoc report instead of the one-line outcome below, and
+silently drifts from what the real checker validates.
 
 ```bash
 python .claude/skills/data-quality-gate/validate.py datasets/<name>/dataset_brief.yaml
@@ -38,12 +41,22 @@ Needs `pandas` + `pyyaml` (`pip install pyyaml` if missing).
 
 ## Outcome policy
 
-- **All PASS** → proceed; at most one short line ("data verified against the
-  brief"). Do not paste the full report unless asked.
+- **All PASS** → proceed. **Never a standalone turn, never a question to the
+  user.** Emit exactly one line, appended to the bottom of the next substantive
+  message (the mission framing in tutor mode, the first chart in analysis mode):
+
+  ```
+  ✅ <dataset> verified against dataset_brief.yaml — <n>/<n> checks passed.
+  ```
+
+  Do not paste the per-check output unless asked for it.
 - **Any FAIL** → **HALT analysis.** Show which check failed with expected vs
   actual, and ask the user whether the data changed intentionally. If it did,
   the brief must be updated first — never silently adapt the analysis to data
   that contradicts its brief.
+- **Never ask the user to produce the validation checklist.** The gate is
+  mechanical verification, not a teaching moment — it does not become a question
+  even in Socratic/tutor contexts.
 
 ## Decision rules after a pass
 

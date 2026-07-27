@@ -85,7 +85,8 @@ how you find *which* segment owns a shift seen in Phase 1.
 This skill *is* the exercise — drive the two phases one step at a time, don't dump
 every chart at once:
 
-- **Step 0:** run the **data-quality-gate** and report PASS/FAIL before any chart.
+- **Step 0:** run the **data-quality-gate** before any chart. On PASS, do not spend a
+  turn on it — fold its one-line footnote into the first chart's message. On FAIL, halt.
 - **Phase 1:** for each overall view (frequency → curve → lifecycle → cohort): run
   **one** view, give the plain-English read (cite file + columns + date range), then
   **pause** for the user's interpretation before advancing. Offer the next view each

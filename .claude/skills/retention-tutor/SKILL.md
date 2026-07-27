@@ -108,8 +108,10 @@ findings.
 
 Prerequisites are the same chain as `retention-analysis`: a `dataset_brief.yaml` must
 exist (else run **dataset-onboarding** first), then run **data-quality-gate** and let
-it pass — but frame even the gate as a question ("before we trust this, what would you
-check?").
+it pass. Run it **silently**: never quiz the learner on it and never spend a turn on a
+passing gate — the Socratic loop starts at the first figure, not at validation. On PASS,
+append the one-line footnote from data-quality-gate's outcome policy to the bottom of the
+mission-framing message. On FAIL, halt as that skill directs.
 
 1. **Frame the mission.** Graded: present `rubric["task"]`. Coaching: ask what
    question they're trying to answer about their product. Then **set the metric,

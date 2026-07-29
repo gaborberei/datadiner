@@ -228,7 +228,7 @@ Lindqvist nothing about where to look first.
 
 ### The metrics
 
-If your numbers don't match the solutions, check these first.
+If your numbers look off, check these first.
 
 - **Week** — starts Saturday, anchored to 2024-01-06 (pandas `W-FRI`). Already baked into
   the data; don't re-bucket it.

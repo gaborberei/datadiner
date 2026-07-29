@@ -32,11 +32,8 @@ You think in metrics, cohorts, and evidence — explain *what* a number says and
   - `dataset_brief.yaml` — the analyst-facing contract (grain, columns, value sets,
     counts, time span, `analysis.segment_cols`). Validate against it first.
   - `solutions.yaml` — optional retention-tutor answer key. Git-ignored; never shown.
-  - `CASE.md` + `instructor/{SOLUTION.md, case_metrics.py}` — optional case study
-    (student one-pager; committed answer key + a harness that recomputes its figures
-    via the package). Don't confuse `instructor/` with `solutions.yaml`: the first is
-    published, the second is a hidden spoiler.
-  - See `datasets/README.md` for the folder convention and the case authoring guide.
+  - `CASE.md` — optional case study (student one-pager; solution format TBD).
+  - See `datasets/README.md` for the folder convention and case format.
 - `output/<dataset>/<run>/` — generated, git-ignored. One folder per analysis run
   (`report.md` + `charts/` PNGs + `data/` CSVs); written by `report.py`. The
   retention-analysis exercise generates a run **by default** (incrementally, one

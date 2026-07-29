@@ -11,9 +11,6 @@ datasets/
     dataset_brief.yaml             the analyst-facing contract
     solutions.yaml                 (optional) retention-tutor answer key — git-ignored
     CASE.md                        (optional) the case study, student-facing
-    instructor/
-      SOLUTION.md                  the case answer key + grading rubric
-      case_metrics.py              recomputes every figure in SOLUTION.md
 ```
 
 ## What every dataset ships
@@ -28,15 +25,9 @@ briefs but not the data. Obtain the CSVs separately, or regenerate a derived one
 source — e.g. the chess weekly rollup is a group-by on
 `date.dt.to_period('W-FRI').dt.start_time` and `user_id`, with `event_count` as the row count.
 
-## Which files are spoilers
-
-Two answer keys can appear in a dataset folder. They are different things with **opposite**
-rules, so don't confuse them:
-
-| | Used by | Committed? |
-|---|---|---|
-| `solutions.yaml` | the Socratic **retention-tutor** skill, via `teaching.load_rubric()` | **No** — git-ignored, never shown to the learner |
-| `instructor/` | the **case study**, for a human or model grading a submission | **Yes** — it is the published answer key |
+One spoiler file can appear in a dataset folder: `solutions.yaml`, the answer key used by
+the Socratic **retention-tutor** skill (via `teaching.load_rubric()`). It is git-ignored and
+never shown to the learner.
 
 ---
 
@@ -51,8 +42,9 @@ questions, and their write-up is compared against an authored solution.
 | File | Audience | Contents |
 |---|---|---|
 | `CASE.md` | **Student** | The one-pager: company, dynamics, stakeholder, the ask, the data pointer, the questions, the deliverable, and a reference section defining the metrics and charts. Self-contained — no other file needed to do the work. |
-| `instructor/SOLUTION.md` | **Instructor / grader** | ⚠️ Spoilers. The authored answer to each question with computed figures, the evidence tables behind them, per-claim tolerance bands, calibration guidance, the grading rubric, and the common wrong answers to watch for. |
-| `instructor/case_metrics.py` | Instructor | Recomputes every figure quoted in `SOLUTION.md` from the log, via the `datadiner` package. Run it before grading and diff your own numbers against it. |
+
+*Solution format — TBD.* How the authored solution is stored and graded is still being decided;
+for now a case ships only its student-facing `CASE.md`.
 
 The case is identified by its dataset, so a dataset carries at most one case. If a second is
 ever needed on the same data, make it `cases/<name>/`.
@@ -73,33 +65,17 @@ An **exhibit** — a product/marketing/ops log — supplies the candidate causes
 every entry should either be a real cause, supply context, or be a plausible decoy the
 solution teaches you to reject. Filler entries only make it longer to read.
 
-## Grading
-
-Each question in `SOLUTION.md` carries tolerance bands and a rubric stated in terms of *what
-the student must have committed to*, not wording. Numbers are graded within a band, since
-reasonable methodology choices (week boundaries, trend baselines) shift them a few points.
-
-The intended flow: student writes answers → grader (human or model) runs `case_metrics.py`,
-then compares against `SOLUTION.md` → feedback names which band each answer reached and what
-evidence was missing.
-
-Weight the *established vs. worth-investigating* distinction at least as heavily as the
-findings themselves. A confident wrong answer scores below a hedged right one.
-
 ## Authoring a new case
 
 1. Pick a dataset. Run the analysis yourself and write down every real pattern with figures —
-   **do not** author the solution from the dataset's `solutions.yaml`; derive it from the data
+   **do not** author the case from the dataset's `solutions.yaml`; derive it from the data
    so the numbers are defensible.
 2. Choose which anomalies to name. Prefer ones with a plausible product cause and a clean date.
 3. Write the story around the company's actual dynamics — growth stage, headcount pressure,
    what the team believes, what decision is pending. The stakes are what make an answer
    *wrong* rather than merely incomplete.
 4. Write 4–6 questions that escalate: describe → quantify → attribute → recommend.
-5. Author `SOLUTION.md` last, and include the wrong answers you expect.
-6. Write `case_metrics.py` on the `datadiner` package — never inline the analysis — and check
-   every figure in `SOLUTION.md` against its output.
-7. Sweep `CASE.md` for leaks: it must not state any metric, window or magnitude the questions
+5. Sweep `CASE.md` for leaks: it must not state any metric, window or magnitude the questions
    are meant to make the student find.
 
 ## Cases

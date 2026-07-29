@@ -3,7 +3,8 @@
 Shared, importable from anywhere in the repo (the repo root is the package's
 parent). Submodules:
 
-    retention   cohort heatmaps, retention curve, usage frequency, lifecycle states
+    retention   cohort heatmaps, retention curve, usage frequency, lifecycle
+                states, weekly rates (NURR / CURR / quick ratio)
     io          shared event-log loading and summaries
     report      bundle a run into output/<dataset>/<run>/ (charts + CSVs + report.md)
     teaching    load_rubric() — private grading rubric for the retention-tutor skill
@@ -29,6 +30,7 @@ from .retention import (
     retention_curve,
     usage_frequency,
     lifecycle_states,
+    weekly_rates,
     cohort_matrix,
     cohort_patterns,
 )
@@ -62,6 +64,7 @@ __all__ = [
     "retention_curve",
     "usage_frequency",
     "lifecycle_states",
+    "weekly_rates",
     "cohort_matrix",
     "cohort_patterns",
     "AnalysisReport",

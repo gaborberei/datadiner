@@ -145,16 +145,23 @@ mission-framing message. On FAIL, halt as that skill directs.
 
 As you show each chart, save the **figure only** into
 `output/<dataset>/retention_lesson/` so the lesson's charts land alongside other
-run artifacts instead of a temp dir. Point each view's `save=` / `save_prefix=` at
-that folder:
+run artifacts instead of a temp dir. Figures are grouped by cut, the same
+subfolder convention as a run folder's `charts/`: un-segmented views in
+`overall/`, segmented views under the segment column (combinations as
+`<col>_x_<col>`). Point each view's `save=` / `save_prefix=` at the right
+subfolder via `lesson_figure_dir`'s second argument:
 
 ```python
 from datadiner.teaching import lesson_figure_dir
-d = lesson_figure_dir(dataset)          # output/<dataset>/retention_lesson/
+d = lesson_figure_dir(dataset)          # output/<dataset>/retention_lesson/overall/
 usage_frequency(df, save=d / "usage_frequency.png")
 retention_curve(df, active_event=core, save=d / "retention_curve.png")
 lifecycle_states(df, active_event=core, save_prefix=str(d / "lifecycle"))
 # five heatmaps → d / "cohort_retention_rate.png", etc.
+# Phase-2 cuts go in the segment's subfolder:
+s = lesson_figure_dir(dataset, "platform")   # .../retention_lesson/platform/
+retention_curve(df, segment_by="platform", active_event=core,
+                save=s / "retention_curve.png")
 ```
 
 Reuse the canonical Phase-1 slugs as filenames so a re-run overwrites in place; the
@@ -170,7 +177,7 @@ reference lines — that's what the learner produces:
 
 ```
 📊 Usage-frequency histogram — figure generated and saved to:
-output/notion_daily_scatter/retention_lesson/usage_frequency.png
+output/notion_daily_scatter/retention_lesson/overall/usage_frequency.png
 
 This plots, per user, their avg active days per month (active = page_shared).
 
@@ -180,11 +187,11 @@ notable — and tell me what you think it means for the product.
 
 📊 **Announce every figure.** When a view renders/saves, post a standard block —
 `📊 <View name> — figure generated and saved to:` on one line, the path on the next
-(e.g. `output/<dataset>/retention_lesson/usage_frequency.png`):
+(e.g. `output/<dataset>/retention_lesson/overall/usage_frequency.png`):
 
 ```
 📊 Usage-frequency histogram — figure generated and saved to:
-output/notion_daily_scatter/retention_lesson/usage_frequency.png
+output/notion_daily_scatter/retention_lesson/overall/usage_frequency.png
 ```
 
 Do this on the **first render** *and* on any recap/re-anchor of that chart, so the

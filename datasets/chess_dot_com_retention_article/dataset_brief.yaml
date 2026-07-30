@@ -1,0 +1,113 @@
+brief_version: 1
+schema:
+  granularity: weekly
+  time_column: date
+  user_column: user_id
+  count_column: event_count
+  primary_key:
+  - date
+  - user_id
+  - event_type
+analysis:
+  core_action: game_played
+  natural_frequency: weekly
+  segment_cols:
+  - platform
+  - acquisition_channel
+data_quality:
+  sparsity: active_periods_only
+  event_count_min: 1
+  event_count_max: 7
+dataset:
+  file: chess_dot_com_retention_article_weekly.csv
+  product: Chess.com — online chess platform
+  rows: 1059597
+  users: 124333
+grain: 'One row per user per active WEEK (presence-only: a row exists only for weeks
+  the user was active). Each date is the Saturday that starts the week.'
+columns:
+  date:
+    type: date
+    description: Week start — always a Saturday. Weeks are anchored to 2024-01-06
+      (pandas W-FRI), so week 52 starts 2024-12-28 and covers through 2025-01-03.
+    values: 52 week starts from 2024-01-06 to 2024-12-28
+  user_id:
+    type: string
+    description: Stable per-user identifier, never reissued. First observed week is
+      the signup week.
+    values: 124,333 distinct users
+  event_type:
+    type: string
+    description: What the user did. Constant across the file — it labels the grain,
+      it does not vary.
+    values:
+      game_played: The user played chess that week. The core action, and the only
+        logged action.
+  event_count:
+    type: int
+    description: Number of DAYS in that week the user was active (1-7). This is a
+      presence count, NOT a count of games played — the source log never recorded
+      game volume. Summing it across the file gives 3,589,248, the active user-days
+      the weekly rollup was built from.
+    values: 1 to 7
+  platform:
+    type: string
+    description: Primary platform the user plays on, fixed at signup and constant
+      across all of a user's rows.
+    values:
+    - desktop
+    - mobile
+  acquisition_channel:
+    type: string
+    description: How the user was acquired, fixed at signup and constant across all
+      of a user's rows.
+    values:
+    - organic
+    - paid
+    - social
+retention_metric:
+  activity_definition: 'A user is ACTIVE in a week if they have a row for it. Because
+    event_type is constant and the grain is already weekly, this is identical to the
+    any-event definition: presence of a row IS the activity signal.'
+  cohort_definition: Signup cohort = first active week (min week). First observed week
+    = signup week.
+  retention_rate: 'Classic N-week retention: fraction of a cohort active exactly N
+    weeks after signup; each (cohort, age) cell computed independently.'
+  churn_and_resurrection: Churn = absence in a period; users MAY return, so compute
+    each retention cell independently rather than as a survival product.
+  weekly_active_users: WAU = count of distinct user_ids with a row in the week.
+time_coverage:
+  start_week: '2024-01-06'
+  end_week: '2024-12-28'
+known_context:
+  beliefs:
+  - 'This file is a weekly rollup of a daily activity log: one row per user per active
+    day was collapsed to one row per user per active week. The rollup is lossless on
+    active-day totals — event_count preserves them — but the specific days within a
+    week are gone.
+
+    '
+  - 'event_type carries ZERO analytical signal: it is constant, so filtering with
+    active_event=''game_played'' matches every row and is a no-op. event_count is
+    genuine data (1-7 active days) but describes presence intensity only; there is
+    no game count, session length, rating or outcome anywhere in this file.
+
+    '
+  - 'Two signup attributes are available to group by: platform (desktop/mobile) and
+    acquisition_channel (organic/paid/social). Both are fixed at signup — they never
+    change within a user — so any segment cut is a clean partition of users, not of
+    events. There is still no country, plan or app-version dimension.
+
+    '
+  - 'The file is sparse by design (active_periods_only): a user has no row for weeks
+    they did not play. Absence IS the zero, which the cohort/lifecycle views handle
+    correctly — but any rolling-window or streak metric needs a zero-filled dense
+    grid first.
+
+    '
+  - 'Saturday anchoring means there are NO partial edge cohorts: all 52 weeks are
+    complete, the first cohort (2024-01-06) has 2,748 users and the last (2024-12-28)
+    2,307. Re-bucketing this file on Monday-anchored weeks would shift every cohort
+    boundary and blur the sharp step changes it contains — keep the given dates.
+
+    '

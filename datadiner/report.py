@@ -5,7 +5,9 @@ Bundle an analysis run into a self-contained, shareable output folder:
 
     output/<dataset>/<YYYY-MM-DD-HHMM>/
         report.md     title + provenance, one section per view (read + chart + data)
-        charts/       PNGs (one per figure; segmented views -> one per group)
+        charts/       PNGs, one subfolder per cut: overall/ for un-segmented
+                      views, <segment_col>/ (or <col>_x_<col>/) for segmented
+                      ones — one PNG per figure, segmented views one per group
         data/         CSVs (cohort matrices, lifecycle states, usage-per-user)
 
 This is the *packaging* layer — it never reimplements analysis. It saves the
@@ -111,6 +113,21 @@ def _normalize_figs(fig):
     if len(figs) == 1:
         return [(None, figs[0])]
     return [(str(i + 1), f) for i, f in enumerate(figs)]
+
+
+def _charts_subdir(figs):
+    """Pick the ``charts/`` subfolder for a section's figures.
+
+    Segmented views label their figures ``col=value`` (or ``col=v, col2=v2``), so
+    the segment column(s) can be read straight off the first labelled figure —
+    those go to ``charts/<col>/`` (combinations to ``charts/<col>_x_<col2>/``).
+    Everything else is an overall view and goes to ``charts/overall/``.
+    """
+    for label, _ in figs:
+        if label is not None and "=" in str(label):
+            cols = [part.split("=", 1)[0].strip() for part in str(label).split(",")]
+            return _slugify("_x_".join(cols))
+    return "overall"
 
 
 def _normalize_data(data):
@@ -236,7 +253,7 @@ class AnalysisReport:
         lines.append("")
         return "\n".join(lines)
 
-    def section(self, title, fig=None, data=None, note="", slug=None):
+    def section(self, title, fig=None, data=None, note="", slug=None, subdir=None):
         """Add one view to the report: its read, chart(s), and data table(s).
 
         Parameters
@@ -249,15 +266,23 @@ class AnalysisReport:
                               (label, DataFrame); each is written as a CSV.
         note : str            the plain-English read ("what it says / why").
         slug : optional str   filename stem; defaults to a slug of `title`.
+        subdir : optional str the ``charts/`` subfolder for the PNGs. Defaults to
+                              the segment column(s) read off segmented-view labels
+                              (``platform``, ``platform_x_channel``), else
+                              ``overall``. Pass it explicitly for segmented views
+                              whose figures carry no ``col=value`` label (e.g. a
+                              ``retention_curve`` overlay).
         """
         slug = slug or _slugify(title)
         figs = _normalize_figs(fig)
         tables = _normalize_data(data)
+        subdir = _slugify(subdir) if subdir else _charts_subdir(figs)
+        (self.charts_dir / subdir).mkdir(exist_ok=True)
 
         chart_md = []
         for label, figure in figs:
             stem = slug if label is None else f"{slug}_{_safe_label(str(label))}"
-            rel = f"charts/{stem}.png"
+            rel = f"charts/{subdir}/{stem}.png"
             figure.savefig(self.dir / rel, dpi=150, bbox_inches="tight")
             _announce_figure(self.dir / rel)
             # Release the figure once it's on disk — the PNG is the artifact, and

@@ -1,7 +1,8 @@
 """
 DataDiner — Retention module
 ============================
-Reusable product analytics functions for retention, churn, and lifecycle analysis.
+Reusable product analytics functions for retention, churn, lifecycle and
+weekly-rate (NURR / CURR / quick ratio) analysis.
 Part of the `datadiner` package; works on any event log with `date` + `user_id`.
 
 Usage:
@@ -535,7 +536,7 @@ _MATRIX_TRANSFORMS = {
 
 
 def cohort_matrix(df, granularity='weekly', kind='rate', segment_by=None,
-                  active_event=None):
+                  active_event=None, max_periods=None):
     """Return the cohort pivot table behind a heatmap, as data (no chart).
 
     The five `*_heatmap` views return only `fig, ax`; use this to get the same
@@ -551,6 +552,9 @@ def cohort_matrix(df, granularity='weekly', kind='rate', segment_by=None,
         Which heatmap's matrix to build (matches the same-named view).
     segment_by : optional column or list of columns to split on
     active_event : optional event_type to count as 'active'
+    max_periods : optional cap on periods-since-signup columns. Defaults to the
+        heatmaps' readable width (20 weekly / 12 monthly); raise it to reach the
+        long tail, e.g. to read where a retention curve plateaus.
 
     Returns
     -------
@@ -565,6 +569,8 @@ def cohort_matrix(df, granularity='weekly', kind='rate', segment_by=None,
     results = []
     for label, sub in _segment_values(df, segment_by):
         cohort_data, sizes, pcol, maxp, fmt = _prepare_cohorts(sub, granularity)
+        if max_periods is not None:
+            maxp = max_periods
         pivot = transform(cohort_data, sizes, pcol, maxp, fmt)
         if label is None:
             return pivot
@@ -839,6 +845,125 @@ def usage_frequency(df, save=None):
 # Public API — Lifecycle States
 # ---------------------------------------------------------------------------
 
+def _weekly_sets(df):
+    """Weekly membership primitives shared by the weekly-rate metrics.
+
+    Returns
+    -------
+    weeks : list of week-start Timestamps, ascending
+    active : dict week -> set of user_ids active that week
+    cohorts : dict week -> set of user_ids whose *first* active week is that week
+    """
+    weeks_df = df.assign(week=df['date'].dt.to_period('W').dt.start_time)
+    weeks_df = weeks_df[['user_id', 'week']].drop_duplicates()
+
+    active = {w: set(g['user_id']) for w, g in weeks_df.groupby('week')}
+    first_week = weeks_df.groupby('user_id')['week'].min()
+
+    cohorts = {}
+    for user_id, week in first_week.items():
+        cohorts.setdefault(week, set()).add(user_id)
+
+    return sorted(active), active, cohorts
+
+
+def weekly_rates(df, segment_by=None, active_event=None):
+    """Per-week lifecycle counts and the three headline retention rates.
+
+    The rate view that sits beside `lifecycle_states`: same weekly buckets, but
+    returned as rates you can plot as a time series and read a trend off.
+
+    Churn model — note the difference from `lifecycle_states`. Here a user is
+    ``churned`` in week *w* if they were active in *w-1* and absent in *w*: one
+    missed week, booked immediately. `lifecycle_states` instead holds them in
+    ``At-Risk`` for a week first, so its ``Churned`` column lags this one by a
+    week and its Quick Ratio runs higher. This column equals that view's
+    ``At-Risk``. Both are defensible; pick per product cadence and say which.
+
+    Parameters
+    ----------
+    df : DataFrame with 'date' and 'user_id' columns
+    segment_by : optional column or list of columns to split on
+    active_event : optional event_type to count as 'active' (e.g. the brief's
+        core_action); defaults to counting any row
+
+    Returns
+    -------
+    DataFrame with one row per week — or, when segment_by is set, a list of
+    (label, DataFrame). Columns:
+
+    ``week``         week start
+    ``wau``          distinct users active in the week
+    ``new``          users whose first active week is this week
+    ``retained``     active in *w* and *w-1*
+    ``resurrected``  active in *w*, absent in *w-1*, not new
+    ``churned``      active in *w-1*, absent in *w*
+    ``nurr``         new-user retention: of the cohort signing up in *w*, the %
+                     active in *w+1*. NaN for the final week.
+    ``curr``         current-user retention: of users active in *w-1* who were
+                     **not new** in *w-1*, the % still active in *w*. NaN for
+                     the first week.
+    ``quick_ratio``  (new + resurrected) / churned. >1 grows, <1 shrinks.
+
+    Why CURR excludes the previous week's new arrivals: including them blends
+    new-user behaviour into what is meant to measure established players, so a
+    swing in NURR shows up as a swing in CURR and a slow year-long trend in
+    established survival is buried under cohort mix.
+    """
+    df = _filter_active(df, active_event)
+    results = []
+    for label, sub in _segment_values(df, segment_by):
+        out = _weekly_rates_one(sub)
+        if label is None:
+            return out
+        results.append((label, out))
+    return results
+
+
+def _weekly_rates_one(df):
+    """Build the weekly rate table for one (sub)frame."""
+    weeks, active, cohorts = _weekly_sets(df)
+
+    records = []
+    for i, week in enumerate(weeks):
+        current = active[week]
+        new = cohorts.get(week, set())
+        prev = active[weeks[i - 1]] if i else set()
+        prev_new = cohorts.get(weeks[i - 1], set()) if i else set()
+
+        retained = current & prev
+        resurrected = current - prev - new
+        churned = prev - current
+
+        # NURR: this week's cohort, seen again next week.
+        nurr = np.nan
+        if new and i + 1 < len(weeks):
+            nurr = len(new & active[weeks[i + 1]]) / len(new) * 100
+
+        # CURR: last week's *established* actives (excluding its new arrivals),
+        # seen again this week.
+        curr = np.nan
+        established = prev - prev_new
+        if established:
+            curr = len(established & current) / len(established) * 100
+
+        records.append({
+            'week': week,
+            'wau': len(current),
+            'new': len(new),
+            'retained': len(retained),
+            'resurrected': len(resurrected),
+            'churned': len(churned),
+            'nurr': nurr,
+            'curr': curr,
+            'quick_ratio': (
+                (len(new) + len(resurrected)) / len(churned) if churned else np.nan
+            ),
+        })
+
+    return pd.DataFrame(records)
+
+
 def lifecycle_states(df, segment_by=None, active_event=None, save_prefix=None):
     """
     Classify users into lifecycle states and produce 2 charts:
@@ -876,7 +1001,14 @@ def lifecycle_states(df, segment_by=None, active_event=None, save_prefix=None):
 
 
 def _lifecycle_one(df, save_prefix, title_suffix=''):
-    """Build the lifecycle states table + the two charts for one (sub)frame."""
+    """Build the lifecycle states table + the two charts for one (sub)frame.
+
+    Churn model: a user who goes absent lands in ``At-Risk`` first and is only
+    booked as ``Churned`` after a *second* consecutive missed week. That is the
+    forgiving read, appropriate for a weekly-cadence product where one skipped
+    week is normal. `weekly_rates` uses the stricter one-week definition — see
+    its docstring for why the package carries both.
+    """
     sns.set_theme(style="whitegrid")
     palette = sns.color_palette("muted")
 

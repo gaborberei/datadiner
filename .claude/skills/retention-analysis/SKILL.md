@@ -133,7 +133,12 @@ doesn't have to ask. (Charts still render inline too; saving is additive.) Skip 
 only when the user opts out ("don't save", "just a quick look"). A run is bundled
 into `output/<dataset>/<YYYY-MM-DD-HHMM>/`: a `report.md` (provenance + one section
 per view with the read, the embedded chart, and a link to the data) alongside
-`charts/` PNGs and `data/` CSVs. The folder is git-ignored.
+`charts/` PNGs and `data/` CSVs. The folder is git-ignored. `charts/` is split by
+cut: un-segmented views save to `charts/overall/`, segmented ones to
+`charts/<segment_col>/` (combinations to `charts/<col>_x_<col>/`). Segmented
+heatmap/lifecycle lists route themselves from their `col=value` labels; for a
+segmented `retention_curve` overlay (one unlabeled figure) pass
+`section(..., subdir="<segment_col>")` explicitly.
 
 📊 **Announce every figure as it renders.** Post a standard block — `📊 <View name> —
 figure generated and saved to:` on one line, the PNG path on the next — so the user
@@ -142,7 +147,7 @@ announced path matches where `AnalysisReport` actually writes:
 
 ```
 📊 Usage-frequency histogram — figure generated and saved to:
-output/<dataset>/<YYYY-MM-DD-HHMM>/charts/usage_frequency.png
+output/<dataset>/<YYYY-MM-DD-HHMM>/charts/overall/usage_frequency.png
 ```
 
 **Incremental — the default path during the guided exercise** (so the report carries
@@ -205,8 +210,10 @@ retention_rate_heatmap(df, segment_by='segment', active_event='page_created')
 ```
 
 Presence-only logs (just `date` + `user_id`, no `event_type`) have no core action —
-leave `active_event` unset. `usage_frequency` always counts any active row (it's the
-exploratory view used to *pick* the metric).
+leave `active_event` unset. `usage_frequency` never filters by event (it's the
+exploratory view used to *pick* the metric); it counts true active **days** via the
+brief's count column (`event_count`) when the log has one, distinct active dates
+otherwise.
 
 ## Question → view router
 

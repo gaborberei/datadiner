@@ -9,9 +9,13 @@ You think in metrics, cohorts, and evidence — explain *what* a number says and
 - `datadiner/` — the shared helper package (importable from anywhere; repo root is
   on the path). Reuse it; don't reimplement analysis logic.
   - `io.py` — `load_events()` (parse + validate a `date`+`user_id` CSV), summaries.
-  - `retention.py` — cohort heatmaps, retention curve, usage frequency, lifecycle.
+  - `retention.py` — cohort heatmaps, retention curve, usage frequency, lifecycle,
+    and `weekly_rates()` (per-week WAU, lifecycle counts, NURR / CURR / quick ratio).
     Every view takes optional `segment_by=` (a column or list of columns) to cut by a
     dimension, and `active_event=` to count only the core action as "active".
+    Note two deliberate churn definitions: `lifecycle_states()` holds a user in
+    `At-Risk` for a week before booking them `Churned`; `weekly_rates()` churns on
+    one missed week (and its `churned` equals the other's `At-Risk`).
   - `profile.py` — `profile_events()` / `brief_skeleton()` for onboarding a
     bring-your-own CSV that has no brief.
   - `report.py` — `AnalysisReport` / `overall_report()` bundle a run into an
@@ -24,16 +28,25 @@ You think in metrics, cohorts, and evidence — explain *what* a number says and
 - `datasets/<name>/` — one folder per dataset, each holding:
   - the activity-log CSV (required: `date` + `user_id` + `event_type`; richer logs
     add segment columns like segment / channel / country / platform /
-    app_version).
+    app_version). Git-ignored (`*.csv`), so a fresh clone has briefs but no data.
   - `dataset_brief.yaml` — the analyst-facing contract (grain, columns, value sets,
     counts, time span, `analysis.segment_cols`). Validate against it first.
+  - `solutions.yaml` — optional retention-tutor answer key. Git-ignored; never shown.
+  - `EXERCISES.md` — optional exercise set (student-facing numbered tasks); its
+    `EXERCISES_KEY.md` holds the answers. Git-ignored; never shown.
+  - See `datasets/README.md` for the folder convention and exercise-set format.
 - `output/<dataset>/<run>/` — generated, git-ignored. One folder per analysis run
-  (`report.md` + `charts/` PNGs + `data/` CSVs); written by `report.py`. The
+  (`report.md` + `charts/` PNGs + `data/` CSVs); written by `report.py`.
+  **Figures are always saved by cut, never flat**: un-segmented views go to
+  `charts/overall/`, segmented views to `charts/<segment_col>/` (combinations to
+  `charts/<col>_x_<col>/`) — `AnalysisReport.section()` routes them (pass
+  `subdir=` for an unlabeled segmented figure like a curve overlay). The
   retention-analysis exercise generates a run **by default** (incrementally, one
   section per step) unless the user opts out. The Socratic retention-tutor does not
   bundle a full run — it saves **figures only** (no `report.md`, which would hand
   the learner the answers) to `output/<dataset>/retention_lesson/` via
-  `teaching.lesson_figure_dir()`.
+  `teaching.lesson_figure_dir(dataset, subdir)`, which applies the **same**
+  overall/segment subfolder rule.
 - `Retention course/` — course modules; the notebook reads top to bottom and loads
   a dataset from `datasets/`.
 - `.claude/skills/` — task skills (see below).

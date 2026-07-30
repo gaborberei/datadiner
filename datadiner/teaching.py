@@ -49,8 +49,8 @@ def _load_yaml(path):
         return yaml.safe_load(fh) or {}
 
 
-def lesson_figure_dir(dataset, base_dir="output"):
-    """Ensure and return ``output/<dataset>/retention_lesson/`` for tutor figures.
+def lesson_figure_dir(dataset, subdir="overall", base_dir="output"):
+    """Ensure and return ``output/<dataset>/retention_lesson/<subdir>/`` for tutor figures.
 
     The Socratic ``retention-tutor`` saves the **figures only** (no ``report.md``)
     of each lesson step here, so the charts land alongside other run artifacts
@@ -58,9 +58,14 @@ def lesson_figure_dir(dataset, base_dir="output"):
     folder. Deliberately does NOT use ``AnalysisReport`` (which always emits a
     ``report.md`` on ``save()`` — that would hand the learner the answers).
 
+    Figures are grouped by cut, same convention as a run folder's ``charts/``:
+    un-segmented views in ``overall/`` (the default), segmented ones under the
+    segment column — ``lesson_figure_dir(ds, "platform")``, combinations as
+    ``lesson_figure_dir(ds, "platform_x_acquisition_channel")``.
+
     ``dataset`` is the dataset folder name (e.g. ``"notion_daily_scatter"``).
     """
-    d = Path(base_dir) / dataset / "retention_lesson"
+    d = Path(base_dir) / dataset / "retention_lesson" / subdir
     d.mkdir(parents=True, exist_ok=True)
     return d
 

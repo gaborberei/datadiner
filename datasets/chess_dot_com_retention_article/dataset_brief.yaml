@@ -11,7 +11,9 @@ schema:
 analysis:
   core_action: game_played
   natural_frequency: weekly
-  segment_cols: []
+  segment_cols:
+  - platform
+  - acquisition_channel
 data_quality:
   sparsity: active_periods_only
   event_count_min: 1
@@ -48,6 +50,21 @@ columns:
       game volume. Summing it across the file gives 3,589,248, the active user-days
       the weekly rollup was built from.
     values: 1 to 7
+  platform:
+    type: string
+    description: Primary platform the user plays on, fixed at signup and constant
+      across all of a user's rows.
+    values:
+    - desktop
+    - mobile
+  acquisition_channel:
+    type: string
+    description: How the user was acquired, fixed at signup and constant across all
+      of a user's rows.
+    values:
+    - organic
+    - paid
+    - social
 retention_metric:
   activity_definition: 'A user is ACTIVE in a week if they have a row for it. Because
     event_type is constant and the grain is already weekly, this is identical to the
@@ -76,8 +93,10 @@ known_context:
     no game count, session length, rating or outcome anywhere in this file.
 
     '
-  - 'There are no attributes to group by — no channel, country, device or plan. The
-    only dimensions are time and the user themselves, so segment_cols is empty.
+  - 'Two signup attributes are available to group by: platform (desktop/mobile) and
+    acquisition_channel (organic/paid/social). Both are fixed at signup — they never
+    change within a user — so any segment cut is a clean partition of users, not of
+    events. There is still no country, plan or app-version dimension.
 
     '
   - 'The file is sparse by design (active_periods_only): a user has no row for weeks

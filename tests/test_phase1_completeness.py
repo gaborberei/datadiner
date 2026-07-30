@@ -52,7 +52,7 @@ def test_one_shot_is_complete(df, tmp_path):
         base_dir=str(tmp_path),
     )
     # All eight canonical sections present, with a chart each.
-    charts = {p.stem for p in (run_dir / "charts").glob("*.png")}
+    charts = {p.stem for p in (run_dir / "charts").rglob("*.png")}
     for slug in PHASE1_REQUIRED_SLUGS:
         assert any(c == slug or c.startswith(slug + "_") for c in charts), slug
     assert (run_dir / "report.md").exists()

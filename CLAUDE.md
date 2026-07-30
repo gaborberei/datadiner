@@ -35,12 +35,17 @@ You think in metrics, cohorts, and evidence — explain *what* a number says and
   - `CASE.md` — optional case study (student one-pager; solution format TBD).
   - See `datasets/README.md` for the folder convention and case format.
 - `output/<dataset>/<run>/` — generated, git-ignored. One folder per analysis run
-  (`report.md` + `charts/` PNGs + `data/` CSVs); written by `report.py`. The
+  (`report.md` + `charts/` PNGs + `data/` CSVs); written by `report.py`.
+  **Figures are always saved by cut, never flat**: un-segmented views go to
+  `charts/overall/`, segmented views to `charts/<segment_col>/` (combinations to
+  `charts/<col>_x_<col>/`) — `AnalysisReport.section()` routes them (pass
+  `subdir=` for an unlabeled segmented figure like a curve overlay). The
   retention-analysis exercise generates a run **by default** (incrementally, one
   section per step) unless the user opts out. The Socratic retention-tutor does not
   bundle a full run — it saves **figures only** (no `report.md`, which would hand
   the learner the answers) to `output/<dataset>/retention_lesson/` via
-  `teaching.lesson_figure_dir()`.
+  `teaching.lesson_figure_dir(dataset, subdir)`, which applies the **same**
+  overall/segment subfolder rule.
 - `Retention course/` — course modules; the notebook reads top to bottom and loads
   a dataset from `datasets/`.
 - `.claude/skills/` — task skills (see below).

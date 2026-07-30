@@ -24,6 +24,9 @@ datasets/
 briefs but not the data. Obtain the CSVs separately, or regenerate a derived one from its
 source — e.g. the chess weekly rollup is a group-by on
 `date.dt.to_period('W-FRI').dt.start_time` and `user_id`, with `event_count` as the row count.
+The chess dataset's two per-user attributes (`platform`, `acquisition_channel`) are synthetic,
+assigned by the seeded script in its folder (`assign_segments.py`) — rerun it after
+regenerating the rollup to restore them.
 
 One spoiler file can appear in a dataset folder: `solutions.yaml`, the answer key used by
 the Socratic **retention-tutor** skill (via `teaching.load_rubric()`). It is git-ignored and

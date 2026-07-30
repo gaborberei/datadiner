@@ -86,6 +86,8 @@ this week.*
 | `user_id` | Stable player identifier, never reissued |
 | `event_type` | Always `game_played`. Constant — it labels the grain, it does not vary. |
 | `event_count` | How many **days** that week the player was active, 1–7 |
+| `platform` | Where the player primarily plays: `desktop` or `mobile`. Fixed at signup — the same on every one of a player's rows. |
+| `acquisition_channel` | How the player was acquired: `organic`, `paid` or `social`. Fixed at signup — the same on every one of a player's rows. |
 
 From the note the data engineer wrote for Farkas:
 
@@ -94,8 +96,10 @@ From the note the data engineer wrote for Farkas:
   them apart, and it counts *days*, not games.
 - There are no game counts, no session lengths, no ratings, no outcomes. A player who played
   one game on Tuesday and a player who played twenty on Tuesday are identical here.
-- There are no attributes. No channel, no country, no device, no plan. There is nothing
-  here you can group by except time and the player themselves.
+- Two player attributes come from the signup record: `platform` and `acquisition_channel`.
+  Both are set once at signup and never change, so grouping by either splits *players*, not
+  events. There is no country, no plan, no app version — those never made it into this
+  extract.
 - A player has a row for a week only if they were active in it. An absent row is not a gap
   in the data — it is a week somebody didn't play. There is no such thing as a missing value
   here.

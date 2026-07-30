@@ -210,8 +210,10 @@ retention_rate_heatmap(df, segment_by='segment', active_event='page_created')
 ```
 
 Presence-only logs (just `date` + `user_id`, no `event_type`) have no core action —
-leave `active_event` unset. `usage_frequency` always counts any active row (it's the
-exploratory view used to *pick* the metric).
+leave `active_event` unset. `usage_frequency` never filters by event (it's the
+exploratory view used to *pick* the metric); it counts true active **days** via the
+brief's count column (`event_count`) when the log has one, distinct active dates
+otherwise.
 
 ## Question → view router
 

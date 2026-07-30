@@ -32,8 +32,9 @@ You think in metrics, cohorts, and evidence — explain *what* a number says and
   - `dataset_brief.yaml` — the analyst-facing contract (grain, columns, value sets,
     counts, time span, `analysis.segment_cols`). Validate against it first.
   - `solutions.yaml` — optional retention-tutor answer key. Git-ignored; never shown.
-  - `CASE.md` — optional case study (student one-pager; solution format TBD).
-  - See `datasets/README.md` for the folder convention and case format.
+  - `EXERCISES.md` — optional exercise set (student-facing numbered tasks); its
+    `EXERCISES_KEY.md` holds the answers. Git-ignored; never shown.
+  - See `datasets/README.md` for the folder convention and exercise-set format.
 - `output/<dataset>/<run>/` — generated, git-ignored. One folder per analysis run
   (`report.md` + `charts/` PNGs + `data/` CSVs); written by `report.py`.
   **Figures are always saved by cut, never flat**: un-segmented views go to

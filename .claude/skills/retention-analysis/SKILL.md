@@ -210,10 +210,13 @@ retention_rate_heatmap(df, segment_by='segment', active_event='page_created')
 ```
 
 Presence-only logs (just `date` + `user_id`, no `event_type`) have no core action —
-leave `active_event` unset. `usage_frequency` never filters by event (it's the
-exploratory view used to *pick* the metric); it counts true active **days** via the
-brief's count column (`event_count`) when the log has one, distinct active dates
-otherwise.
+leave `active_event` unset. `usage_frequency` **defaults to every event** (it's the
+exploratory view used to *pick* the metric, so it doesn't presuppose one), but it
+accepts `active_event=` like the rest — pass it on a multi-event log to read the
+cadence of the core action alone. It counts true active **days** via the brief's
+count column (`event_count`) when the log has one; otherwise it counts distinct
+active dates and labels the axis with what one date spans on that grain (a
+weekly-grain log yields active *weeks* per month, not days).
 
 ## Question → view router
 

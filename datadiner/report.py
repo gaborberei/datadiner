@@ -404,9 +404,9 @@ def cohort_sections(report, df, granularity="weekly", active_event=None,
 # ---------------------------------------------------------------------------
 
 # Builders wrap each overview view's differing return shape into the
-# (fig, data) pair ``section`` expects. usage_frequency takes no active_event.
+# (fig, data) pair ``section`` expects.
 def _usage_frequency_section(df, active_event=None):
-    fig, _ax, avg_days = usage_frequency(df)
+    fig, _ax, avg_days = usage_frequency(df, active_event=active_event)
     return fig, avg_days
 
 
@@ -425,8 +425,9 @@ def _lifecycle_section(df, active_event=None):
 # `overall_report` share one definition.
 _OVERVIEW_VIEWS = [
     ("Usage frequency", _usage_frequency_section,
-     "Average active days per month per user — the engagement cadence "
-     "that frames what 'active' should mean (daily vs weekly vs monthly)."),
+     "Average active days per month per user (active weeks where the grain is "
+     "weekly and no day count is carried) — the engagement cadence that frames "
+     "what 'active' should mean (daily vs weekly vs monthly)."),
     ("Retention curve", _retention_curve_section,
      "The overall decay shape: how fast the average cohort loses users "
      "over the weeks since first activity."),

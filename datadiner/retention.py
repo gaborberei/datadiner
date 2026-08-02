@@ -768,45 +768,103 @@ def retention_curve(df, max_periods=40, segment_by=None, active_event=None, save
 # Public API — Usage Frequency Histogram
 # ---------------------------------------------------------------------------
 
-def usage_frequency(df, save=None):
+def _resolve_count_col(df, count_col):
+    """Pick the column holding active-days-per-row, or None to count dates.
+
+    'auto' takes the conventional 'event_count' when the log carries it (a
+    rollup where one row covers several active days); an explicit name is
+    required to exist; None forces distinct-date counting.
     """
-    Histogram of average days active per month per user.
+    if count_col is None:
+        return None
+    if count_col == 'auto':
+        return 'event_count' if 'event_count' in df.columns else None
+    if count_col not in df.columns:
+        raise ValueError(
+            f"count_col {count_col!r} is not a column; present: {list(df.columns)}"
+        )
+    return count_col
+
+
+def _date_unit(df):
+    """Infer what one 'date' value spans, so the axis can be labelled honestly.
+
+    A weekly-grain log has no days in it — counting distinct dates there yields
+    weeks, and calling them days would overstate nothing but mislabel everything.
+    """
+    dates = df['date'].drop_duplicates().sort_values()
+    if len(dates) < 2:
+        return 'day'
+    step = dates.diff().dt.days.median()
+    if step >= 28:
+        return 'month'
+    if step >= 5:
+        return 'week'
+    return 'day'
+
+
+def usage_frequency(df, active_event=None, count_col='auto', save=None):
+    """
+    Histogram of average active periods per month per user.
     Shows how frequently users engage — daily, weekly, or monthly.
+
+    Counts true active **days** when the log carries a per-row day count
+    (`event_count` on a weekly rollup, picked up by ``count_col='auto'``);
+    otherwise counts distinct active dates, and labels the axis with whatever
+    one date actually spans on this grain.
 
     Parameters
     ----------
     df : DataFrame with 'date' and 'user_id' columns
+    active_event : optional event_type to count as "active". Left unset by
+        default — this is the exploratory view used to *pick* the metric, so it
+        counts every row. Set it on a multi-event log to measure cadence of the
+        core action alone rather than of incidental events.
+    count_col : column holding active days per row. 'auto' (default) uses
+        'event_count' when present, None forces distinct-date counting.
     save : optional filename to save the figure (e.g. 'usage_frequency.png')
 
     Returns
     -------
     fig, ax
-    avg_days_per_user : DataFrame with 'user_id' and 'avg_days_active_per_month'
+    avg_days_per_user : DataFrame with 'user_id' and 'avg_active_<unit>_per_month'
     """
     sns.set_theme(style="whitegrid")
+
+    df = _filter_active(df, active_event)
+    count_col = _resolve_count_col(df, count_col)
+    unit = 'day' if count_col else _date_unit(df)
 
     df = df.copy()
     df['month'] = df['date'].dt.to_period('M')
 
-    # Count unique active days per user per month
-    active_days = (
-        df.groupby(['user_id', 'month'])['date']
-        .nunique()
-        .reset_index(name='days_active')
-    )
+    # Active periods per user per month: sum the per-row day count when the log
+    # has one, else count distinct active dates.
+    if count_col:
+        active = (
+            df.groupby(['user_id', 'month'])[count_col]
+            .sum()
+            .reset_index(name='active')
+        )
+    else:
+        active = (
+            df.groupby(['user_id', 'month'])['date']
+            .nunique()
+            .reset_index(name='active')
+        )
 
-    # Average active days per user across all their active months
+    col = f'avg_active_{unit}s_per_month'
     avg_days_per_user = (
-        active_days.groupby('user_id')['days_active']
+        active.groupby('user_id')['active']
         .mean()
-        .reset_index(name='avg_days_active_per_month')
+        .reset_index(name=col)
     )
 
     # Plot
     fig, ax = plt.subplots(figsize=(12, 7))
 
     sns.histplot(
-        avg_days_per_user['avg_days_active_per_month'],
+        avg_days_per_user[col],
         discrete=True,
         kde=True,
         color='#3498db',
@@ -815,20 +873,32 @@ def usage_frequency(df, save=None):
         ax=ax,
     )
 
-    # Target zone references
-    ax.axvline(x=20, color='#1b5e20', linestyle='--', linewidth=2,
-               label='Daily Target (20+)')
-    ax.axvline(x=4, color='#0d47a1', linestyle='--', linewidth=2,
-               label='Weekly Target (4+)')
-    ax.axvline(x=1, color='#b71c1c', linestyle=':', linewidth=2,
-               label='Monthly Target (1+)')
+    # Target-zone references, on the scale actually plotted. The day-scale
+    # 20+/4+/1+ bands are unreachable by construction on a weekly axis, so a
+    # non-day unit gets its own bands instead of borrowing theirs.
+    if unit == 'day':
+        bands = [(20, '#1b5e20', '--', 'Daily Target (20+)'),
+                 (4, '#0d47a1', '--', 'Weekly Target (4+)'),
+                 (1, '#b71c1c', ':', 'Monthly Target (1+)')]
+    elif unit == 'week':
+        bands = [(4, '#0d47a1', '--', 'Every Week (4+)'),
+                 (2, '#b71c1c', ':', 'Twice a Month (2+)')]
+    else:
+        bands = [(1, '#b71c1c', ':', 'Monthly Target (1+)')]
 
-    ax.set_title('Product Usage Frequency — Avg Days Active per Month per User',
-                 fontsize=16, fontweight='bold')
-    ax.set_xlabel('Average Days Active per Month', fontsize=12)
+    for x, color, style, label in bands:
+        ax.axvline(x=x, color=color, linestyle=style, linewidth=2, label=label)
+
+    unit_label = f'{unit.capitalize()}s'
+    ax.set_title(
+        f'Product Usage Frequency — Avg {unit_label} Active per Month per User',
+        fontsize=16, fontweight='bold')
+    ax.set_xlabel(f'Average {unit_label} Active per Month', fontsize=12)
     ax.set_ylabel('Number of Users', fontsize=12)
-    ax.set_xlim(0, 32)
-    ax.set_xticks(np.arange(0, 32, 2))
+
+    upper = max(avg_days_per_user[col].max(), max(x for x, *_ in bands)) + 2
+    ax.set_xlim(0, upper)
+    ax.set_xticks(np.arange(0, upper, 2 if upper > 12 else 1))
     ax.legend(loc='upper right')
     ax.grid(axis='y', alpha=0.3)
 

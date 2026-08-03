@@ -768,17 +768,22 @@ def retention_curve(df, max_periods=40, segment_by=None, active_event=None, save
 # Public API — Usage Frequency Histogram
 # ---------------------------------------------------------------------------
 
-def _resolve_count_col(df, count_col):
+def _resolve_count_col(df, count_col, unit):
     """Pick the column holding active-days-per-row, or None to count dates.
 
-    'auto' takes the conventional 'event_count' when the log carries it (a
-    rollup where one row covers several active days); an explicit name is
-    required to exist; None forces distinct-date counting.
+    'auto' takes the conventional 'event_count' only on a grain COARSER than
+    daily, where one row covers several active days and the count is the only
+    way to recover them. On daily grain a row already *is* one day, so the same
+    column means volume (games, clicks) instead — summing it there would report
+    events per month under a "days" label. An explicit name is always honoured;
+    None forces distinct-date counting.
     """
     if count_col is None:
         return None
     if count_col == 'auto':
-        return 'event_count' if 'event_count' in df.columns else None
+        if unit == 'day' or 'event_count' not in df.columns:
+            return None
+        return 'event_count'
     if count_col not in df.columns:
         raise ValueError(
             f"count_col {count_col!r} is not a column; present: {list(df.columns)}"
@@ -832,8 +837,9 @@ def usage_frequency(df, active_event=None, count_col='auto', save=None):
     sns.set_theme(style="whitegrid")
 
     df = _filter_active(df, active_event)
-    count_col = _resolve_count_col(df, count_col)
-    unit = 'day' if count_col else _date_unit(df)
+    grain = _date_unit(df)
+    count_col = _resolve_count_col(df, count_col, grain)
+    unit = 'day' if count_col else grain
 
     df = df.copy()
     df['month'] = df['date'].dt.to_period('M')

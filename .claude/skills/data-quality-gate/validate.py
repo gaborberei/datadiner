@@ -130,18 +130,35 @@ def main(brief_path: str) -> int:
         check(f"dataset.users ({'~5% tolerance' if approx else 'exact'})", ok, dataset["users"], n_users)
 
     # --- time coverage ---------------------------------------------------------------
+    # Accept the grain's own vocabulary: a daily brief says start_date/end_date, a
+    # weekly one start_week/end_week. Keyed on the period word so a brief that names
+    # its bounds correctly is still checked, instead of silently skipping.
     tc = brief.get("time_coverage") or {}
     if time_col in df.columns:
         t = pd.to_datetime(df[time_col])
-        if tc.get("start_week"):
-            check("time_coverage.start_week", str(t.min().date()) == str(tc["start_week"]),
-                  str(tc["start_week"]), str(t.min().date()))
-        if tc.get("end_week"):
-            check("time_coverage.end_week", str(t.max().date()) == str(tc["end_week"]),
-                  str(tc["end_week"]), str(t.max().date()))
-        if tc.get("n_weeks") and granularity == "weekly":
-            check("time_coverage.n_weeks", t.nunique() == int(tc["n_weeks"]),
-                  int(tc["n_weeks"]), t.nunique())
+
+        def _first(*keys):
+            """(key, value) of the first key the brief actually declares."""
+            for k in keys:
+                if tc.get(k):
+                    return k, tc[k]
+            return None, None
+
+        key, want = _first("start_week", "start_date", "start_period", "start")
+        if want:
+            check(f"time_coverage.{key}", str(t.min().date()) == str(want),
+                  str(want), str(t.min().date()))
+        key, want = _first("end_week", "end_date", "end_period", "end")
+        if want:
+            check(f"time_coverage.{key}", str(t.max().date()) == str(want),
+                  str(want), str(t.max().date()))
+        # NB: not granularity.rstrip('ly') — that yields 'dai' for 'daily'.
+        period_word = {"daily": "day", "weekly": "week", "monthly": "month"}.get(
+            granularity, granularity)
+        key, want = _first("n_weeks", "n_days", "n_months", "n_periods")
+        if want and key in ("n_periods", f"n_{period_word}s"):
+            check(f"time_coverage.{key}", t.nunique() == int(want),
+                  int(want), t.nunique())
 
     # --- missing periods (info, judged against the declared sparsity) -----------------
     if time_col in df.columns:

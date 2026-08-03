@@ -1,0 +1,176 @@
+brief_version: 1
+schema:
+  granularity: daily
+  time_column: date
+  user_column: user_id
+  primary_key:
+  - date
+  - user_id
+  - event_type
+analysis:
+  core_action: game_played
+  natural_frequency: weekly
+  segment_cols:
+  - platform
+  - acquisition_channel
+data_quality:
+  sparsity: active_periods_only
+dataset:
+  file: chess_dot_com_retention_article_daily.csv
+  product: Chess.com — online chess platform
+  rows: 3755751
+  users: 128966
+grain: 'One row per user per active DAY (presence-only: a row exists only for days the
+  user was active). Derived from the weekly rollup in
+  ../chess_dot_com_retention_article/ by expanding each weekly row''s event_count into
+  that many distinct days — see known_context on the synthetic day placement before
+  reading anything into WHICH day a row falls on.'
+columns:
+  date:
+    type: date
+    description: The calendar day the user was active. Spans the 52 source weeks, each
+      of which starts on a Saturday and runs Sat-Fri, so the file extends past
+      2024-12-31 into 2025-01-03.
+    values: 364 consecutive days from 2024-01-06 to 2025-01-03
+  user_id:
+    type: string
+    description: Stable per-user identifier, never reissued. Identical to the weekly
+      file's — the two datasets join on it. First observed day is the signup day.
+    values: 128,966 distinct users
+  event_type:
+    type: string
+    description: What the user did. Constant across the file — it labels the grain, it
+      does not vary.
+    values:
+      game_played: The user played chess that day. The core action, and the only logged
+        action.
+  platform:
+    type: string
+    description: 'SYNTHETIC label, constant across all of a user''s rows. NOT observed
+      client data: assigned retrospectively in the weekly source by assign_segments.py
+      from the user''s own engagement tier, and carried through this expansion
+      unchanged. Descriptive cuts only — see known_context on endogenous segmentation
+      before drawing any conclusion from a platform difference.'
+    values:
+    - desktop
+    - mobile
+  acquisition_channel:
+    type: string
+    description: 'SYNTHETIC label, constant across all of a user''s rows. NOT observed
+      acquisition attribution: assigned retrospectively in the weekly source by
+      assign_segments.py from the user''s own engagement tier, and carried through this
+      expansion unchanged. Descriptive cuts only — see known_context on endogenous
+      segmentation before drawing any conclusion from a channel difference.'
+    values:
+    - organic
+    - paid
+    - social
+retention_metric:
+  activity_definition: 'A user is ACTIVE on a day if they have a row for it. Because
+    event_type is constant, this is identical to the any-event definition: presence of
+    a row IS the activity signal. Daily activity is REAL in volume (the count of active
+    days per user per week is exact) but SYNTHETIC in placement (which days) — so
+    define retention on weekly or coarser periods.'
+  cohort_definition: Signup cohort = first active period. For weekly cohorts that must
+    be the W-FRI week of the user's first active day, which reproduces the source file's
+    cohorts exactly; a daily signup cohort is well defined but its within-week day is
+    random.
+  retention_rate: 'Classic N-period retention: fraction of a cohort active exactly N
+    periods after signup; each (cohort, age) cell computed independently.'
+  churn_and_resurrection: Churn = absence in a period; users MAY return, so compute each
+    retention cell independently rather than as a survival product. Note that at a daily
+    grain almost everyone looks churned on almost every day — the natural_frequency is
+    weekly, so a daily churn definition is meaningless here.
+  weekly_active_users: WAU = count of distinct user_ids with a row in the week (bucket
+    on W-FRI). DAU = count of distinct user_ids with a row on the day; DAU/WAU on this
+    file is a function of the random day draw, not of real stickiness.
+time_coverage:
+  start_date: '2024-01-06'
+  end_date: '2025-01-03'
+  n_days: 364
+known_context:
+  beliefs:
+  - '*** DAY PLACEMENT IS SYNTHETIC — READ BEFORE ANY DAY-LEVEL CLAIM ***
+
+    The source log only ever recorded HOW MANY days a user was active in a week, never
+    WHICH days. make_daily.py restores the daily grain by drawing, for each weekly row
+    with event_count = n, n distinct day offsets from that week''s 7 days, uniformly
+    without replacement (SEED=42). Verified flat: each weekday holds 14.28% of rows,
+    max deviation 0.011pp from 1/7.
+
+    So: day-of-week effects, weekend-vs-weekday splits, streaks, consecutive-day runs,
+    gap-length distributions and DAU/WAU ratios on this file measure THE RANDOM DRAW,
+    not user behaviour. They are flat or binomial by construction and any pattern in
+    them is noise. Everything at weekly grain or coarser is real and identical to the
+    source — the expansion is lossless on active-day totals (3,755,751 user-days) and
+    on every user''s per-week active-day count.
+
+    Use the daily grain for day-level plumbing (dense grids, rolling windows, DAU
+    series shape over calendar time) and for TEACHING what a rollup destroys. Do not
+    use it to make a claim about when in the week people play.
+
+    '
+  - 'Re-aggregate weeks on W-FRI. The source weeks are Saturday-anchored (pandas
+    W-FRI, anchored to 2024-01-06). datadiner''s cohort views bucket with
+    date.dt.to_period(''W'') — Monday-anchored — which is a harmless no-op on the
+    weekly file (each Saturday maps 1:1 to one Monday-week) but on THIS file splits
+    every original week across two Monday-weeks, shifting all 52 cohort boundaries and
+    blurring the sharp step changes the data contains. Bucket with
+    date.dt.to_period(''W-FRI'').dt.start_time to reproduce the source cohorts exactly.
+
+    '
+  - 'event_type carries ZERO analytical signal: it is constant, so filtering with
+    active_event=''game_played'' matches every row and is a no-op. There is no game
+    count, session length, rating or outcome anywhere in this file — and unlike the
+    weekly source, no event_count either: one row per active day makes the count
+    implicitly 1.
+
+    '
+  - 'Two attributes are available to group by: platform (desktop/mobile) and
+    acquisition_channel (organic/paid/social). Both are constant within a user, so any
+    segment cut is a clean partition of users, not of events. There is still no
+    country, plan or app-version dimension.
+
+    '
+  - '*** ENDOGENOUS SEGMENTATION — READ BEFORE ANY SEGMENT CLAIM ***
+
+    platform and acquisition_channel are SYNTHETIC. assign_segments.py generated them
+    retrospectively on the weekly source: each user was bucketed into an engagement tier
+    computed from their OWN observed behaviour (weeks_active and mean_days -> power /
+    regular_light / casual), then a label drawn per tier. power draws ~62% organic / ~14%
+    paid and ~91% mobile; casual draws ~29% organic / ~44% paid.
+
+    The causal arrow therefore runs BACKWARDS: engagement determines the label, not the
+    label the engagement. Every cross-segment difference in this file is composition,
+    not effect. Controlling for tier collapses them: organic-vs-paid mean active weeks
+    goes from a 2.22-week gap to 0.34/0.86/0.61 within tier (and the sign flips);
+    mobile-vs-desktop from 3.36 to 0.43/0.65/1.13.
+
+    Consequences that mislead if not known: a cohort''s paid_share is a near-deterministic
+    function of its retention (power% vs paid_share correlates -0.894 across the 52
+    cohorts), so any calendar dip in the base data shows up as a fake "paid acquisition
+    surge" in the same weeks — most visibly 2024-02-26 to 2024-03-25.
+
+    Use these columns for descriptive slicing and for TEACHING the confound. Do NOT use
+    them to attribute a retention movement to a platform or a channel. The underlying
+    behavioural patterns (the week-1 cliff, the Feb-Mar and May-Jul blocks, the
+    2024-09-16 shock) are real and un-segmented; only their attribution is fabricated.
+
+    '
+  - 'The file is sparse by design (active_periods_only): a user has no row for days they
+    did not play. Absence IS the zero, which the cohort/lifecycle views handle correctly
+    — but any rolling-window or streak metric needs a zero-filled dense grid first, and
+    at this grain gaps are the norm rather than the exception (3.76M active rows across
+    128,966 users x 364 days = an 8% dense matrix).
+
+    '
+  - 'Saturday anchoring means there are NO partial edge cohorts: all 52 source weeks are
+    complete, the first cohort (2024-01-06) has 2,748 users and the last (2024-12-28)
+    2,307. The daily file inherits this — but only if bucketed on W-FRI (see above).
+
+    '
+  provenance: 'Generated by make_daily.py in this folder from
+    ../chess_dot_com_retention_article/chess_dot_com_retention_article_weekly.csv.
+    Deterministic (SEED=42) and safe to rerun. Verified round-trip: re-aggregating this
+    file on W-FRI weeks reproduces all 1,187,624 source (week, user) event_count cells
+    with zero mismatches.'

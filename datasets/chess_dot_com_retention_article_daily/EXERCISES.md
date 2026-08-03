@@ -31,54 +31,42 @@ source first.
 
 Get the environment working and prove you understand what you're holding.
 
-**1.** Run the data-quality gate against the brief. How many checks are there, what's the
-verdict, and what does its `INFO` line about missing weeks mean? Roughly half the
-user-weeks between a player's first and last activity are absent — explain why that is
-**not** a data-quality failure here.
 
-**2.** Without opening the CSV, answer from `dataset_brief.yaml` alone: what is the grain
+**1.** Without opening the CSV, answer from `dataset_brief.yaml` alone: what is the grain
 of one row? What is the declared core action? Which columns can you segment by? What does
 `event_count` count — and what does it *not* count?
 
-**3.** Load the file with `datadiner.io.load_events`. Report the row count, the distinct
+**2.** Load the file with `datadiner.io.load_events`. Report the row count, the distinct
 user count, and the first and last week. Do they match what the brief declares?
 
-**4.** The workflow says to pass `active_event='<core_action>'` to every view. Do that here,
+**3.** The workflow says to pass `active_event='<core_action>'` to every view. Do that here,
 then check what it changed. Why does it make no difference on this dataset, and what would
 you have had to look at to know that in advance?
 
-**5.** Generate the Phase-1 overall run. Find the output folder and list what's in it. Which
+**4.** Generate the Phase-1 overall run. Find the output folder and list what's in it. Which
 subfolder do un-segmented charts go to, and why does that convention exist?
-
-**6.** A colleague asks for day-of-week analysis — "do people play more on Sundays?" — and
-for a 7-day rolling active count. Both are refused by the workflow rules. Which rule, and
-what specifically about this file makes each one impossible rather than merely awkward?
 
 ---
 
 ## Part 2 — Reading the views
 
-**7.** Look at the usage-frequency histogram. Describe its shape. Is this a daily, weekly or
+**5.** Look at the usage-frequency histogram. Describe its shape. Is this a daily, weekly or
 monthly product? Compute the mean average-days-active-per-month across users, then explain
 why quoting that single number to a stakeholder would misrepresent the player base.
 
-**8.** On the retention curve: where does it stop falling, and what is the level it settles
+**6.** On the retention curve: where does it stop falling, and what is the level it settles
 at? Say what that plateau tells you about the product that the first-week drop does not.
 What would the curve have to look like instead for you to say the product has no durable
 core?
 
-**9.** The cohort heatmaps are coloured **per column**. What does a green cell actually
-claim — and what does it *not* claim? Separately: why does the reading guide tell you to
-look at the grey `Users` column before you trust any percentage in that row?
-
-**10.** From the lifecycle bars and the quick-ratio line: is the player base growing net?
+**7.** From the lifecycle bars and the quick-ratio line: is the player base growing net?
 Give the quick ratio's typical level for the year and say where it sits relative to the
 break-even line. Identify any week it crossed that line.
 
-**11.** Pick any cohort in the March–April region. Compare the date on its heatmap row label
-with the earliest `date` value in the CSV for the players in that cohort. They differ. Which
-is correct, does the discrepancy change any retention number, and how should you quote
-cohort dates in a write-up so nobody is misled?
+**8.** The cohort heatmaps are coloured **per column**. What does a green cell actually
+claim — and what does it *not* claim? Separately: why does the reading guide tell you to
+look at the grey `Users` column before you trust any percentage in that row?
+
 
 ---
 
@@ -90,60 +78,53 @@ it hit, and say whether it was temporary or permanent.
 
 Picking the wrong measure is the most common way to get one of these confidently wrong.
 
-**12.** Five consecutive signup cohorts in the early-March region retain far worse than
+**9.** Five consecutive signup cohorts in the early-March region retain far worse than
 their neighbours. Find them and quantify the gap. Then decide: is this a problem with *who
 signed up in those weeks*, or something that hit everyone active at that time? Say which
 heatmap direction told you, and what the other direction would have looked like instead.
 
-**13.** Look at signup volume in the same window, broken down by `acquisition_channel`. One
+**10.** Look at signup volume in the same window, broken down by `acquisition_channel`. One
 channel clearly drove the extra volume. Does that same channel own the retention damage?
 Check the week-1 retention of each channel inside the window before you answer — the obvious
 conclusion here is only half right, and saying which half is the point of the task.
 
-**14.** In April, weekly signups fall sharply. Did retention get worse or better? Give the
+**11.** In April, weekly signups fall sharply. Did retention get worse or better? Give the
 numbers. What does your answer imply about the players acquired in the previous window, and
 what would you tell someone who wants to restart that spend?
 
-**15.** A long run of consecutive cohorts starting in late May retains dramatically better
+**12.** A long run of consecutive cohorts starting in late May retains dramatically better
 than anything before it. Find the window, quantify the lift, and identify the exact cohort
 where it ends. What does the ending tell you — and which is the more useful finding for the
 team, the lift or the way it stopped?
 
-**16.** One calendar week is bad for every cohort at once, regardless of how long those
+**13.** One calendar week is bad for every cohort at once, regardless of how long those
 players had been around. Find it and quantify the drop in weekly actives. Then test the
 claim *"it fixed itself — actives were back within a month, so there was no lasting
 damage."* Check the cohort whose first return week fell inside that window before you agree.
 State precisely what recovered and what didn't.
 
-**17.** The final cohort in the file shows 0% week-1 retention. Is that a finding about the
+**14.** The final cohort in the file shows 0% week-1 retention. Is that a finding about the
 product? Explain what produces it, and name the general trap it's an example of. While
 you're there: two December cohorts retain below the year's baseline. Would you report that
 as established, or as worth investigating? Defend the choice.
 
 ---
 
-## Part 4 — Synthesis
+## Part 4 — Next steps
 
-**18.** Compute the mean of `event_count` per active user, by month, across the year. It
-rises substantially. Someone concludes: *"engagement is improving — our players are playing
-more days per week than they used to."*
 
-Test that claim before accepting it. Split the same metric by how long players have been
-signed up — new players separately from long-tenured ones — and also look at how the tenure
-mix of the active base changes over the year. Then say whether the conclusion is right,
-wrong, or right for the wrong reason. This is the most important task in the set.
+**15.**  "Should we increase marketing spend?" — build to the trap: compare channels on
+week-1 retention (they tie), then on CURR and active-days (they don't). Then the
+Feb-Mar surge: did more paid spend buy worse users, or did something else happen that
+week? Closes on what CAC/LTV data would be needed to actually answer it.
 
-**19.** Weekly actives finish the year at a record. Name **one** metric in this data that is
-genuinely getting better across the year and **one** that is genuinely getting worse. Give
-both trends with numbers, explain the mechanism behind each, and explain why neither is
-visible in the weekly-actives line.
+ **16.** "How do the two platforms perform?" — mobile is 69% of users and 2.5× the active
+days. Where does the gap open (week 1) and where doesn't it (CURR)? What does that
+imply about desktop onboarding vs desktop engagement?
 
-**20.** Re-run the retention curve and the usage-frequency histogram cut by `platform`, and
-again by `acquisition_channel` (pass `segment_by=` to the views). For each cut: which group
-retains best, how large is the gap, and — this is the part that matters — **at what point in
-a player's life does the gap open?** The two cuts differ sharply on that last question.
-Explain what each pattern implies about where the problem actually is, and why a team
-watching only week-1 retention would misread one of them completely.
+**17.**  "What should we focus on?" — forces a prioritization argument: the week-1 cliff
+costs ~1,320 users per 2,480-user cohort, but the mobile/desktop and organic/paid gaps
+compound over the whole flat tail. Includes the September shock as an
 
 ---
 
@@ -161,11 +142,6 @@ If your numbers look off, check these first.
 - **New / Retained / Resurrected / Churned**, for week *W*: *new* = first appearance is *W* ·
   *retained* = active in *W* and *W−1* · *resurrected* = active in *W*, absent in *W−1*, not
   new · *churned* = active in *W−1*, absent in *W*.
-- **NURR** (new user retention rate) — of the cohort that signed up in *W*, the share active
-  again in *W+1*. This is week-1 cohort retention.
-- **CURR** (current user retention rate) — of players active in *W−1* who were **not** new in
-  *W−1*, the share still active in *W*. Excluding last week's newcomers is what makes this a
-  statement about *established* players.
 - **Quick ratio** — (new + resurrected) / churned. Above 1 the base grows, below 1 it shrinks.
 
 Note the repo carries two deliberate churn definitions: `lifecycle_states()` holds a user in

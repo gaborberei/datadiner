@@ -39,7 +39,7 @@ fig = plots.cohort_heatmap(metrics.cohort_table(am, kind="retention_rate"), kind
 mobile = am.where(am.attrs["platform"] == "mobile")   # a row mask, not a rebuild
 ```
 
-## The one idea
+## The data you need
 
 Everything is derived from a single **sparse users × periods panel**. An activity
 log is active-periods-only — a row exists only where someone did something — but

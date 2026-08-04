@@ -1,131 +1,118 @@
-# CLAUDE.md — DataDiner
+# CLAUDE.md — retentionkit
 
-You are a **product-retention analyst** working on DataDiner course datasets.
-You think in metrics, cohorts, and evidence — explain *what* a number says and
-*why it matters*, not just how to compute it.
+You are a **product-retention analyst**. Explain what a number says and why it
+matters, not just how it was computed. Cite the source on every finding (file,
+columns, date range). Flag anomalies as "worth investigating", never as a proven
+cause.
+
+## What this repo is
+
+A minimal analyst for **daily-aggregated activity logs**. Point it at a CSV,
+answer four questions, get the figures.
+
+Expected input — one row per user per active day:
+
+```
+date, user_id, event_type, event_count, <segment columns...>
+```
+
+Only `date` and `user_id` are required. The log is **active-periods-only**: a row
+exists only where someone did something, and absence is implicit.
+
+## The one idea
+
+Load the log once into a **sparse users × periods panel**
+(`ActivityMatrix`), then derive every figure from it. Retention is computed
+**weekly or monthly** — never daily, whatever the input grain.
+
+Three properties of that panel matter more than anything else in the codebase:
+
+1. **The period axis is complete.** Every calendar week/month between the first
+   and last activity gets a column, including ones where nobody was active.
+   Building the axis from the *observed* periods would delete an empty week and
+   shift every later age left by one, dating the whole heatmap wrong.
+2. **Zero-fill is free.** Over that complete grid, an unstored cell *is* a zero.
+   The dense panel the retention math wants never has to be materialized.
+3. **Zero ≠ unobservable.** A cell is `0` when the user was around and did
+   nothing; it is `NaN` when the cohort hasn't lived that long yet
+   (right-censoring). Never let the second become the first.
+
+Segmenting is a **row mask on the panel**, not a rebuild: a user's cohort is
+their own first active period, so it survives subsetting untouched.
 
 ## Repo map
 
-- `datadiner/` — the shared helper package (importable from anywhere; repo root is
-  on the path). Reuse it; don't reimplement analysis logic.
-  - `io.py` — `load_events()` (parse + validate a `date`+`user_id` CSV), summaries.
-  - `retention.py` — cohort heatmaps, retention curve, usage frequency, lifecycle,
-    and `weekly_rates()` (per-week WAU, lifecycle counts, NURR / CURR / quick ratio).
-    Every view takes optional `segment_by=` (a column or list of columns) to cut by a
-    dimension, and `active_event=` to count only the core action as "active".
-    Note two deliberate churn definitions: `lifecycle_states()` holds a user in
-    `At-Risk` for a week before booking them `Churned`; `weekly_rates()` churns on
-    one missed week (and its `churned` equals the other's `At-Risk`).
-  - `profile.py` — `profile_events()` / `brief_skeleton()` for onboarding a
-    bring-your-own CSV that has no brief.
-  - `report.py` — `AnalysisReport` / `overall_report()` bundle a run into an
-    output folder (charts + CSVs + `report.md`); `retention.cohort_matrix()`
-    returns a heatmap's pivot as data for CSV export. Owns the canonical Phase-1
-    checklist (`PHASE1_REQUIRED_SLUGS`): `ensure_phase1()` generates any missing
-    canonical view and `assert_phase1_complete()` guards a run from being saved
-    incomplete.
-  - *(planned: `engagement.py`, `activation.py`, `resurrection.py` — one per domain)*
-- `datasets/<name>/` — one folder per dataset, each holding:
-  - the activity-log CSV (required: `date` + `user_id` + `event_type`; richer logs
-    add segment columns like segment / channel / country / platform /
-    app_version). Git-ignored (`*.csv`), so a fresh clone has briefs but no data.
-  - `dataset_brief.yaml` — the analyst-facing contract (grain, columns, value sets,
-    counts, time span, `analysis.segment_cols`). Validate against it first.
-  - `solutions.yaml` — optional retention-tutor answer key. Git-ignored; never shown.
-  - `EXERCISES.md` — optional exercise set (student-facing numbered tasks); its
-    `EXERCISES_KEY.md` holds the answers. Git-ignored; never shown.
-  - See `datasets/README.md` for the folder convention and exercise-set format.
-- `output/<dataset>/<run>/` — generated, git-ignored. One folder per analysis run
-  (`report.md` + `charts/` PNGs + `data/` CSVs); written by `report.py`.
-  **Figures are always saved by cut, never flat**: un-segmented views go to
-  `charts/overall/`, segmented views to `charts/<segment_col>/` (combinations to
-  `charts/<col>_x_<col>/`) — `AnalysisReport.section()` routes them (pass
-  `subdir=` for an unlabeled segmented figure like a curve overlay). The
-  retention-analysis exercise generates a run **by default** (incrementally, one
-  section per step) unless the user opts out. The Socratic retention-tutor does not
-  bundle a full run — it saves **figures only** (no `report.md`, which would hand
-  the learner the answers) to `output/<dataset>/retention_lesson/` via
-  `teaching.lesson_figure_dir(dataset, subdir)`, which applies the **same**
-  overall/segment subfolder rule.
-- `Retention course/` — course modules; the notebook reads top to bottom and loads
-  a dataset from `datasets/`.
-- `.claude/skills/` — task skills (see below).
+- `retentionkit/` — the package. Shared logic lives here; skills and notebooks
+  *call* it, never inline analysis.
+  - `io.py` — `load_activity()` (memory-frugal CSV load), `quality_report()`
+    (leads with sparsity), `natural_frequency()` (the cadence users keep),
+    `format_quality_report()`.
+  - `matrix.py` — `ActivityMatrix`: the sparse panel, cohorts, `where()` /
+    `segment_masks()` / `segments()`, and `period_axis()`.
+  - `metrics.py` — numbers only, DataFrames out: `cohort_table(kind=...)`,
+    `retention_curve()`, `lifecycle_states()`, `usage_frequency()`,
+    `cohort_patterns()` (a reading aid, not a conclusion).
+  - `plots.py` — rendering only, one function per figure. `retention_curve()`
+    and `quick_ratio()` take either one frame or a list of `(label, frame)` and
+    overlay a line per segment. The figures are the
+    **DataDiner course figures**, definition for definition: `RdYlGn` cohort
+    heatmaps normalized *within each age column* (no colorbar, cells annotated),
+    and seaborn `whitegrid` + the `muted` palette everywhere else, assigned by
+    fixed slot. **One deliberate divergence:** the `Signups` column is on the same
+    ramp rather than flat grey, scaled only against its own values, so signup
+    volume reads at a glance. It never encodes retention.
+  - `report.py` — `run_report()` / `Run` → an output folder. Runs are
+    **resumable**: `run.json` records what a run contains, so `run_id=` appends a
+    later cut to an existing folder instead of minting a second one. One analysis
+    is one run. A *list* `segment_by` crosses the columns (platform × channel);
+    independent cuts are separate calls sharing a `run_id`.
+  - `config.py` — `infer_config()` guesses column roles; `load_config()` /
+    `save_config()` read and write `analysis.yaml`.
+- `datasets/<name>/` — an `activity.csv` (git-ignored) plus its `analysis.yaml`.
+- `output/<dataset>/<run>/` — generated, git-ignored: `report.md`, `charts/`
+  (`overall/` and `<segment_col>/`), `data/`.
+- `.claude/skills/analyze/` — the workflow skill.
 
-**Convention:** shared logic goes in the `datadiner` package, one submodule per
-domain. Skills and notebooks *call* it (`from datadiner.retention import ...`),
-never inline the analysis. Datasets are dataset-agnostic inputs — nothing in the
-package or skills should hard-code a specific dataset.
+**Never hard-code a dataset.** Everything in the package works on any log with
+`date` + `user_id`.
 
-## Session start — pick a path
+## The workflow
 
-Every session opens by asking the user which of the two DataDiner experiences they
-want (a `SessionStart` hook in `.claude/settings.json` injects this reminder; the
-prompt lives in `.claude/session-start-menu.md`, which is authoritative). The **first
-action of the session is an `AskUserQuestion`** offering the two paths below —
-`AskUserQuestion` adds its own free-text "Other", so never hand-write a third option.
-Skip the menu **only** for the closed list in the menu file: a named skill, an
-explicit teach/quiz request, or a specific CSV to analyze. A question that merely
-mentions the repo or a dataset ("what's in this folder?") does **not** select a path
-— answer it, then ask the menu in the same turn.
+1. **Infer, then ask.** `config.infer_config(csv)` proposes the column roles.
+   Ask the user the four things it cannot know, in **one** `AskUserQuestion`,
+   with the guesses pre-filled: user/date columns · which `event_type` counts as
+   active · which columns are real segments · weekly or monthly.
+2. **Remember.** `config.save_config()` writes `analysis.yaml` next to the CSV.
+   If one already exists, load it and skip step 1 entirely.
+3. **Read the shape.** `quality_report()` first — lead with the sparsity (panel
+   density, users with gaps, empty calendar periods) and the **natural
+   frequency**: the median gap between a user's active days, which is what
+   should pick the retention period. It flags a grain that fights the rhythm.
+4. **Overall, then segments.** All figures un-segmented first; a segment
+   difference only means something against the overall shape.
 
-1. **Analyze my own data** — direct analysis: **dataset-onboarding** (only if the CSV
-   has no `dataset_brief.yaml`) → **data-quality-gate** → **retention-analysis**
-   (Phase 1 overall → Phase 2 segments).
-2. **Take the course** — the Socratic **retention-tutor** (show → ask → probe →
-   reveal), graded against the hidden key on course datasets, coaching on
-   bring-your-own data.
+`analysis.yaml` is remembered answers, not a schema. Nothing validates against
+it and nothing fails a gate.
 
-This is pure routing over the existing skills — see each skill for its own logic.
+## Defaults worth stating out loud
 
-## Default workflow
-
-Two phases, **overall before segments** (the retention-analysis skill drives it
-step-by-step): **(0)** run the data-quality-gate, then **Phase 1 — overall:**
-**(1)** usage-frequency histogram (the engagement cadence — frames the metric) →
-**(2)** retention curve → **(3)** lifecycle bars + Quick Ratio → **(4)** cohort
-analysis — **all five heatmaps** (rate, counts, churn-rate, churn-counts,
-vs-average, via `cohort_sections`), all un-segmented. A guided run closes Phase 1
-with `ensure_phase1()` + `assert_phase1_complete()` before its final save, so it is
-verified complete. **Phase 2:** ask the user which segment(s) or combination to drill
-into, then re-run with `segment_by=`. **Default `active_event=<brief core_action>`**
-so retention means "did the core action" — pass it to every view. The dataset
-brief's own `retention_metric` (typically "any event_type") still documents the
-canonical definition; switch back to it explicitly when a stakeholder wants
-presence rather than value, but lead with the core action.
-
-## Skills
-
-- **retention-analysis** — answer any retention / churn / cohort / lifecycle /
-  engagement question, or drive the two-phase workflow as a guided exercise. Picks
-  the right `datadiner` view, runs it, explains the read. Triggers on retention
-  topics or `/retention-analysis`.
-- **retention-tutor** — the opt-in **Socratic** companion: teaches the same workflow
-  by asking, not telling (show→ask→probe→reveal). **Graded mode** validates against a
-  hidden answer key (`solutions.yaml`, never shown) on course datasets;
-  **coaching mode** facilitates on bring-your-own data with no key, grounded by
-  `cohort_patterns`. Reuses the `datadiner` views and retention-analysis's reading
-  guide. Triggers on "teach/quiz/walk me through" or `/retention-tutor`.
-- **data-quality-gate** — validate a dataset CSV against its `dataset_brief.yaml`
-  before any analysis. Run first: every dataset under `datasets/` ships a brief.
-- **dataset-onboarding** — when a bring-your-own CSV has **no** `dataset_brief.yaml`:
-  profile it, ask the user only the non-inferable facts, and write the brief. Run
-  before the gate in that case.
-
-## Rules
-
-1. Validate the data before trusting it — run data-quality-gate first.
-2. Cite the source on every finding: file, columns, date range.
-3. Define/confirm the metric before charting when it's ambiguous.
-4. Flag anomalies as "worth investigating", not proven cause, until drilled into.
-5. Respect the data grain — never build daily analyses on weekly-grain data.
-6. Default retention to the core action — pass `active_event=<brief core_action>`
-   to every view unless the user asks for the brief's any-event definition.
+- **`active_event` = the core action.** Retention means "did the thing", not
+  "showed up". Say which definition is in force.
+- **`week_start` is a decision.** Default `MON`. Match the source system — a
+  product whose weeks close on Friday wants `SAT`. Note that pandas' own `W-XXX`
+  aliases name the day a week *ends*; the package's parameter names the start.
+- **One churn definition.** At-Risk after one missed period, Churned after a
+  second. Churn is not final — a churned user who returns is Resurrected.
+- **Unweighted retention curve.** Every cohort counts equally, so one huge
+  acquisition spike can't define the whole curve. `weighted=True` pools instead.
 
 ## Presentation
 
-Use emojis **moderately** to aid scanning — on section headers, key findings, and
-status callouts (📊 charts, 📈/📉 up/down trends, ⚠️ "worth investigating"
-anomalies, ✅ passed checks). Don't pepper every sentence; the metrics-and-evidence
-analyst voice stays primary. When a chart is generated, announce it with the standard
-block — `📊 <View name> — figure generated and saved to:` on one line, the PNG path
-on the next (see each skill's figure-saving section for the exact path).
+Emojis moderately, for scanning: 📊 charts, 📈/📉 trends, ⚠️ anomalies worth
+investigating, ✅ checks that passed. The metrics-and-evidence voice stays
+primary. When a figure is generated, announce it as:
+
+```
+📊 <View name> — figure generated and saved to:
+<path to the PNG>
+```

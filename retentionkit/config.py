@@ -161,8 +161,7 @@ def _pick_count(df, cols, exclude):
 # ---------------------------------------------------------------------------
 
 _KEYS = ("file", "user_col", "date_col", "event_col", "core_action",
-         "count_col", "segment_cols", "grain", "week_start",
-         "natural_frequency", "notes")
+         "count_col", "segment_cols", "grain", "week_start", "notes")
 
 
 def config_path(csv_path):

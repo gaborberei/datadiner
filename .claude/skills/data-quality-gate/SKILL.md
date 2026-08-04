@@ -1,77 +1,85 @@
 ---
 name: data-quality-gate
-description: Validate a dataset CSV against its dataset_brief.yaml BEFORE building any analysis on it. Use on the first load of a dataset in a session, before computing any metric, when the user asks to analyze a dataset that ships with a brief, or whenever the CSV or brief changes.
+description: Read the shape of an activity-log CSV — sparsity, natural frequency, gaps — BEFORE building any analysis on it. Use on the first load of a dataset in a session, before computing any metric, or whenever the CSV changes.
 ---
 
-# Data-quality gate
+# Data-quality read
 
 ## Purpose
 
-Catch a broken, substituted, or mis-contracted data file before any analysis
-is built on it — and decide, from the brief's grain, which analyses are even
-meaningful on this data.
+Understand the shape of the log before any figure is built on it — how sparse the
+panel is, what cadence users actually keep, and which periods are missing — so the
+retention period is chosen from the data rather than assumed, and so the numbers are
+read with their limits in view.
 
 ## When to use
 
-The first time a dataset is loaded in a session. Re-run if the CSV or the brief
-changes. Do not start metrics, charts, or modeling before the gate has passed
-once. Every dataset under `datasets/<name>/` ships a `dataset_brief.yaml`, so
-this gate always has something to check.
+The first time a dataset is loaded in a session, before metrics or charts. Re-run if
+the CSV changes. **retention-analysis runs this as its first step.**
 
 ## Instructions
 
-Run the bundled checker (all logic lives in Python — do not re-derive checks
-in prose). Run it from the repo root, passing the brief's path, and read its
-**exit code** (`0` = PASS). Do not hand-roll equivalent checks in pandas: that
-produces a verbose ad-hoc report instead of the one-line outcome below, and
-silently drifts from what the real checker validates.
+All the logic lives in Python — do not re-derive checks in prose, and do not
+hand-roll equivalents in pandas (that drifts from what the package actually measures):
 
-```bash
-python .claude/skills/data-quality-gate/validate.py datasets/<name>/dataset_brief.yaml
+```python
+from retentionkit import load_activity, quality_report, format_quality_report
+from retentionkit.config import load_config
+
+cfg = load_config("datasets/<name>/activity.csv")
+df  = load_activity(cfg["file"])
+m   = quality_report(df, grain=cfg["grain"], active_event=cfg["core_action"],
+                     week_start=cfg["week_start"])
+print(format_quality_report(m))
 ```
 
-It validates the brief↔CSV contract (declared columns, primary-key
-uniqueness, core action, documented value sets, row/user counts, time
-coverage) and summarises missing periods at the brief's granularity. It works
-on any event log with at least a time column + `user_id`; `event_type` and a
-count column are only required when the brief documents them, so a
-presence-only `date + user_id` log passes too.
-
-Needs `pandas` + `pyyaml` (`pip install pyyaml` if missing).
+`quality_report` measures rows/users/span, **panel density**, users with gaps, empty
+calendar periods, median active periods per user, single-period users, duplicate
+rows, and the **natural frequency**. `format_quality_report(m)` renders it as a short
+Markdown block; `m["flags"]` is the plain-English list behind it.
 
 ## Outcome policy
 
-- **All PASS** → proceed. **Never a standalone turn, never a question to the
-  user.** Emit exactly one line, appended to the bottom of the next substantive
-  message (the mission framing in tutor mode, the first chart in analysis mode):
+**Nothing here fails or blocks.** `analysis.yaml` is remembered answers, not a schema
+— nothing validates against it and there is no gate to pass. These are things for an
+analyst to weigh.
 
-  ```
-  ✅ <dataset> verified against dataset_brief.yaml — <n>/<n> checks passed.
-  ```
+Lead with, in this order:
 
-  Do not paste the per-check output unless asked for it.
-- **Any FAIL** → **HALT analysis.** Show which check failed with expected vs
-  actual, and ask the user whether the data changed intentionally. If it did,
-  the brief must be updated first — never silently adapt the analysis to data
-  that contradicts its brief.
-- **Never ask the user to produce the validation checklist.** The gate is
-  mechanical verification, not a teaching moment — it does not become a question
-  even in Socratic/tutor contexts.
+1. **Panel density** — "of N users × P periods, activity lands in x% of cells.
+   Everything else is a real zero, not missing data."
+2. **Natural frequency vs the chosen grain** — the median gap between a user's active
+   days. This is what should pick the retention period. If they disagree, the report
+   already says so: ⚠️ a period **shorter** than the rhythm manufactures churn, a
+   **longer** one hides it.
+3. **The remaining flags** — empty periods, single-period users, resurrection,
+   duplicates, negative counts, null user ids.
 
-## Decision rules after a pass
+Fold the headline into the next substantive message rather than spending a turn on
+it; surface the ⚠️ flags on their own, since they change how every later number reads.
+Don't paste the full per-flag output unless asked.
 
-- `schema.granularity: weekly` → day-granularity analyses are off-limits
-  (within-week timing does not exist); never build a daily dense grid. Work in
-  weekly windows and weekly retention.
-- Event grain **with gaps** → any rolling-window or streak metric requires a
-  zero-filled dense grid first (`rolling(7)` on sparse rows means "last 7
-  active days", not "last 7 calendar days").
+If the data contradicts the config — the cadence has moved, a segment column is gone
+— say so and offer to update `analysis.yaml`. Never silently adapt the analysis to
+data that contradicts the decisions on file.
+
+## Decision rules after the read
+
+- **Weekly-grain source data** → day-granularity analyses are off-limits (within-week
+  timing does not exist). Never build a daily dense grid for retention; the daily
+  panel exists only to feed `usage_frequency`.
+- **Very sparse at week grain** (density < 5%, median user active in a handful of
+  weeks) → check whether monthly is the honest retention period.
+- **Users with gaps** → resurrection is real in this log, so churn must not be read as
+  final.
+- **Event grain with gaps** → any rolling-window or streak metric needs the zero-filled
+  panel first (`rolling(7)` on sparse rows means "last 7 *active* days", not "last 7
+  calendar days").
 
 ## Remember
 
-- Verification ≠ conclusions: a passing gate says the file is intact and
-  matches its contract, not that the data is unbiased.
-- Gaps under a declared `data_quality.sparsity` are a quirk to handle, not a
-  quality failure.
-- **NEVER open an answer key** (a `solutions.yaml` / `ground_truth_*` file, if
-  one sits next to the brief) — it spoils the exercise the dataset exists for.
+- Verification ≠ conclusions: a clean-looking log is intact, not unbiased.
+- Empty calendar periods keep their column so cohort ages stay aligned. Deleting them
+  would shift every later age left by one and date the whole heatmap wrong.
+- `0` is "observed, nobody active"; `NaN` is "this cohort hasn't lived that long yet".
+  They are not interchangeable.

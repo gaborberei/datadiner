@@ -71,7 +71,9 @@ their own first active period, so it survives subsetting untouched.
 - `datasets/<name>/` — an `activity.csv` (git-ignored) plus its `analysis.yaml`.
 - `output/<dataset>/<run>/` — generated, git-ignored: `report.md`, `charts/`
   (`overall/` and `<segment_col>/`), `data/`.
-- `.claude/skills/analyze/` — the workflow skill.
+- `.claude/skills/` — three skills, all of which *call* the package:
+  `retention-analysis` (the workflow), `data-quality-gate` (read the log's shape
+  first), `dataset-onboarding` (write an `analysis.yaml` for a CSV without one).
 
 **Never hard-code a dataset.** Everything in the package works on any log with
 `date` + `user_id`.

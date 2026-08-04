@@ -4,7 +4,7 @@
       {
         "matcher": "startup|clear|resume|compact",
         "hooks": [
-          { "type": "command", "command": "cat .claude/session-start-menu.md" }
+          { "type": "command", "command": "cat .claude/session-start.md" }
         ]
       }
     ]
